@@ -265,7 +265,7 @@ export class CallSession {
     }
 
     // the worker may have dropped DURING the connect; a room nothing owns
-    // would leak a live agent job (parity with the EL bridge's C1)
+    // would leak a live agent job that nothing ever closes
     if (this.closed) {
       this.log.info("worker closed during room connect; leaving the orphaned room");
       void room.close();

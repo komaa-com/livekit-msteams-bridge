@@ -86,6 +86,11 @@ Pick a tier at [standin.komaa.com](https://standin.komaa.com), pair an identity,
 2. Set `WORKER_SHARED_SECRET` to the pairing secret (both sides must match or the handshake is rejected with 401).
 3. Call your Teams bot. StandIn joins, dials the bridge, the bridge creates the room and dispatches your agent, and the agent answers.
 
+## Examples
+
+- [`examples/basic-bridge/`](./examples/basic-bridge/) - embed the package in your own Node project (`npm install @komaa/livekit-msteams-bridge`, three lines of code).
+- [`examples/agents/`](./examples/agents/) - two ready-made Python agents the bridge can dispatch: a minimal voice pipeline and a bitHuman avatar variant, both showing the three Teams integration points (`agent_name`, `ctx.job.metadata`, the `teams.*` data topics).
+
 ## Configuration
 
 See [`.env.example`](./.env.example) (ships with the package). Notable:

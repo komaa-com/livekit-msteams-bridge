@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import { sign, verify, isFresh } from "../src/hmac.js";
 
-// Fixed vector: mirrors HmacSigner.cs — HMAC-SHA256(secret, "{timestampMs}.{callId}") hex-lower.
+// Fixed vector: the StandIn media bridge HMAC recipe — HMAC-SHA256(secret, "{timestampMs}.{callId}") hex-lower.
 // Recompute independently here so a refactor of sign() can't silently drift.
-test("sign matches the C# HmacSigner recipe", () => {
+test("sign matches the StandIn media bridge HMAC recipe", () => {
   const secret = "test-secret";
   const ts = 1720000000000;
   const callId = "19:meeting_abc@thread.v2";
@@ -20,7 +20,7 @@ test("verify accepts correct and rejects tampered signatures", () => {
   const callId = "call-123";
   const sig = sign(secret, ts, callId);
   assert.equal(verify(secret, ts, callId, sig), true);
-  assert.equal(verify(secret, ts, callId, sig.toUpperCase()), true); // case-insensitive like the C# side
+  assert.equal(verify(secret, ts, callId, sig.toUpperCase()), true); // case-insensitive, matching the signer
   assert.equal(verify(secret, ts + 1, callId, sig), false);
   assert.equal(verify(secret, ts, "other-call", sig), false);
   assert.equal(verify("wrong", ts, callId, sig), false);

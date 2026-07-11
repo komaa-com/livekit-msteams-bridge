@@ -1,0 +1,5 @@
+livekit-agents>=1.0
+livekit-plugins-openai>=1.0
+livekit-plugins-silero>=1.0
+livekit-plugins-bithuman>=1.0   # avatar_agent.py only
+python-dotenv>=1.0

@@ -1,7 +1,7 @@
 /**
  * Worker wire protocol: the JSON messages the StandIn media bridge speaks (discriminated on "type").
- * JSON, camelCase properties, discriminated on "type". The worker serializes
- * with System.Text.Json camelCase options; keep field names in exact sync.
+ * JSON, camelCase properties, discriminated on "type". The peer serializes
+ * camelCase; keep field names in exact sync with the published wire contract.
  */
 
 export interface CallerInfo {
