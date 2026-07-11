@@ -1,6 +1,4 @@
 import { createServer, type IncomingMessage, type Server } from "node:http";
-import { createServer as createHttpsServer } from "node:https";
-import { readFileSync } from "node:fs";
 import type { Duplex } from "node:stream";
 import { WebSocketServer } from "ws";
 import type { BridgeConfig } from "./config.js";
