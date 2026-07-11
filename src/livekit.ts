@@ -118,9 +118,15 @@ export async function connectLiveKitRoom(
     }
   });
   room.on(RoomEvent.ParticipantDisconnected, (participant) => {
-    log.info(`participant "${participant.identity}" left the room`);
-    // the agent leaving mid-call ends the call (parity with agent-disconnected)
-    handlers.onClosed(`participant ${participant.identity} disconnected`);
+    // End the call only when the LAST remote leaves. Avatar agents (bitHuman,
+    // Tavus, …) run the avatar as a SEPARATE participant alongside the agent
+    // session, so ending on the first departure would cut a healthy call short
+    // if one of the two flaps. When the map is empty, every remote is gone.
+    const remaining = room.remoteParticipants.size;
+    log.info(`participant "${participant.identity}" left the room (${remaining} remote(s) left)`);
+    if (remaining === 0) {
+      handlers.onClosed(`last remote left (was ${participant.identity})`);
+    }
   });
   room.on(RoomEvent.Disconnected, () => handlers.onClosed("room disconnected"));
 

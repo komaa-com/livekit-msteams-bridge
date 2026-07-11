@@ -94,10 +94,6 @@ export class CallSession {
   private pendingAudio: string[] = [];
   private pendingContext: string[] = [];
 
-  // Teams recording gate: nothing is persisted by this bridge, but the state
-  // is tracked so downstream additions inherit the gate.
-  private recordingActive = false;
-
   // governors
   private governorTimer: NodeJS.Timeout | null = null;
   private goodbyeTimer: NodeJS.Timeout | null = null;
@@ -198,7 +194,6 @@ export class CallSession {
         this.pushContext(`The caller pressed the "${msg.digit}" key on their keypad.`);
         break;
       case "recording.status":
-        this.recordingActive = msg.status === "active";
         this.log.info(`recording.status = ${msg.status}`);
         break;
       case "video.frame":
@@ -231,7 +226,6 @@ export class CallSession {
       return;
     }
     this.log.info(`session.start (direction=${msg.direction ?? "inbound"}, recording=${msg.recordingStatus ?? "unknown"})`);
-    this.recordingActive = msg.recordingStatus === "active";
 
     // Dispatch metadata: nullable caller fields are defaulted, never null; the
     // AAD id is included only when Teams provides one (per-person, never shared).

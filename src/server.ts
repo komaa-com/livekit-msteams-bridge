@@ -1,6 +1,4 @@
 import { createServer, type IncomingMessage, type Server } from "node:http";
-import { createServer as createHttpsServer } from "node:https";
-import { readFileSync } from "node:fs";
 import type { Duplex } from "node:stream";
 import { WebSocketServer } from "ws";
 import type { BridgeConfig } from "./config.js";
@@ -23,7 +21,10 @@ const log = logger("server");
 const MAX_INBOUND_PAYLOAD_BYTES = 2 * 1024 * 1024;
 const DEFAULT_MAX_CONNECTIONS = 64;
 const DEFAULT_PRE_START_TIMEOUT_MS = 10_000;
-const SHUTDOWN_GRACE_MS = 300;
+// LiveKit teardown (room.disconnect + deleteRoom) makes network round-trips to
+// LiveKit; give the fire-and-forget closes time to land before the process
+// exits, so rollouts don't leave rooms to idle out (extra agent-minutes).
+const SHUTDOWN_GRACE_MS = 2_000;
 
 /** callId = last non-empty path segment of the upgrade URL. */
 export function callIdFromUrl(url: string | undefined): string | null {

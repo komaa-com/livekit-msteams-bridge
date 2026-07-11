@@ -14,7 +14,7 @@
     "conversational-ai"
   ],
   "license": "MIT",
-  "author": "Komaa",
+  "author": "Alaaeldin Elhenawy <alaamh@outlook.com>",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/komaa-com/livekit-msteams-bridge.git"
