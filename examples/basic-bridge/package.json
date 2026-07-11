@@ -6,6 +6,6 @@
     "start": "node --env-file=.env index.mjs"
   },
   "dependencies": {
-    "@komaa/livekit-msteams-bridge": "^0.1.0"
+    "@komaa/livekit-msteams-bridge": "^0.2.0"
   }
 }
