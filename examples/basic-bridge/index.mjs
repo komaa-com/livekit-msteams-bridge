@@ -25,7 +25,7 @@ const cfg = loadConfig();
 startServer(cfg);
 
 console.log("basic-bridge example is up.");
-console.log(`Point your StandIn identity's agent WebSocket URL at ws://<this-host>:${cfg.port}/voice/msteams/stream`);
+console.log(`Point your StandIn identity at wss://<your-tls-front>/voice/msteams/stream (this server listens plain WS on :${cfg.port} - front it with TLS)`);
 console.log(`Dispatching agent "${cfg.livekitAgentName ?? "<automatic>"}" on ${cfg.livekitUrl}`);
 
 // Graceful shutdown is built in: on SIGINT/SIGTERM every live call is ended

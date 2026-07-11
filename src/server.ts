@@ -23,7 +23,11 @@ const log = logger("server");
 const MAX_INBOUND_PAYLOAD_BYTES = 2 * 1024 * 1024;
 const DEFAULT_MAX_CONNECTIONS = 64;
 const DEFAULT_PRE_START_TIMEOUT_MS = 10_000;
-const SHUTDOWN_GRACE_MS = 300;
+// room.close() does an async disconnect + deleteRoom (network round-trips to
+// LiveKit); a short grace would orphan rooms on redeploy and the agent jobs
+// would idle out instead of ending - the exact cost LIVEKIT_DELETE_ROOM_ON_END
+// exists to avoid.
+const SHUTDOWN_GRACE_MS = 2_500;
 
 /** callId = last non-empty path segment of the upgrade URL. */
 export function callIdFromUrl(url: string | undefined): string | null {

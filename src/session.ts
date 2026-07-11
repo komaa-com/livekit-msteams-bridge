@@ -22,8 +22,6 @@ const MAX_OUTBOUND_BUFFER_BYTES = 1 * 1024 * 1024;
 /** Dead-peer window: worker heartbeats every 30 s → 3 missed pings ends the call. */
 const DEFAULT_WORKER_IDLE_TIMEOUT_MS = 90_000;
 
-/** Hard headroom on top of the goodbye grace so nothing wedges a time-limited call open. */
-const GOODBYE_HARD_CAP_MS = 8_000;
 
 /**
  * What the relay needs from the LiveKit side of a call. The real
@@ -188,19 +186,31 @@ export class CallSession {
         this.sendToWorker({ type: "pong", ts: msg.ts });
         break;
       case "participants":
-        this.pushContext(
-          msg.count <= 1
-            ? "This is a 1:1 call with a single human caller."
-            : `There are ${msg.count} human participants on this call. Stay quiet unless directly addressed.`,
-        );
+        if (msg.count === 1) {
+          this.pushContext("This is a 1:1 call with a single human caller.");
+        } else if (msg.count > 1) {
+          this.pushContext(`There are ${msg.count} human participants on this call. Stay quiet unless directly addressed.`);
+        }
+        // count 0 = roster momentarily empty/unknown; say nothing rather than claim a 1:1
         break;
       case "dtmf":
         this.pushContext(`The caller pressed the "${msg.digit}" key on their keypad.`);
         break;
-      case "recording.status":
-        this.recordingActive = msg.status === "active";
+      case "recording.status": {
+        const active = msg.status === "active";
         this.log.info(`recording.status = ${msg.status}`);
+        // surface the compliance-relevant state change to the agent so it can
+        // disclose/adjust ("this call is being recorded")
+        if (active !== this.recordingActive) {
+          this.recordingActive = active;
+          this.pushContext(
+            active
+              ? "The Microsoft Teams call recording is now ACTIVE."
+              : "The Microsoft Teams call recording is not active.",
+          );
+        }
         break;
+      }
       case "video.frame":
         // The Teams tile is rendered by the worker's own avatar; inbound video
         // to the agent is a future feature (publish as a room video track).
@@ -208,7 +218,7 @@ export class CallSession {
         break;
       case "assistant.say":
         // worker-side governor: ask the agent to speak, the worker tears down after
-        void this.performGoodbye(msg.text);
+        this.performGoodbye(msg.text);
         break;
       case "session.end":
         this.log.info(`session.end from worker: ${msg.reason}`);
@@ -220,6 +230,11 @@ export class CallSession {
   }
 
   private async onSessionStart(msg: SessionStartMessage): Promise<void> {
+    if (this.closed) {
+      // a session.end/close raced ahead of this queued handler: do not create
+      // a room + dispatch a billed agent job that nothing owns
+      return;
+    }
     if (this.sessionStarted) {
       this.log.warn("duplicate session.start ignored");
       return;
@@ -287,7 +302,7 @@ export class CallSession {
     // bridge-side governor: LiveKit doesn't know about your billing
     if (this.cfg.maxCallMinutes > 0) {
       this.governorTimer = setTimeout(() => {
-        void this.onGovernorLimit();
+        this.onGovernorLimit();
       }, this.cfg.maxCallMinutes * 60_000);
       this.governorTimer.unref?.();
       this.log.info(`governor armed: max ${this.cfg.maxCallMinutes} min`);
@@ -307,22 +322,15 @@ export class CallSession {
 
   // ---- governors ----
 
-  private async onGovernorLimit(): Promise<void> {
+  private onGovernorLimit(): void {
     if (this.closed) {
       return;
     }
     this.log.info("governor: call time limit reached");
-    // hard deadline FIRST, so nothing can wedge the call past its limit
-    const hardMs = this.cfg.goodbyeGraceMs + GOODBYE_HARD_CAP_MS;
-    this.goodbyeTimer = setTimeout(() => this.endCall("time-limit"), hardMs);
-    this.goodbyeTimer.unref?.();
-    await this.performGoodbye(this.cfg.goodbyeText);
-    if (this.closed) {
-      return;
-    }
-    if (this.goodbyeTimer) {
-      clearTimeout(this.goodbyeTimer);
-    }
+    this.performGoodbye(this.cfg.goodbyeText);
+    // One deadline: the goodbye request is a synchronous data publish with no
+    // reported duration, so the grace IS the budget (nothing async can wedge
+    // the call open past it).
     this.goodbyeTimer = setTimeout(() => this.endCall("time-limit"), this.cfg.goodbyeGraceMs + 500);
     this.goodbyeTimer.unref?.();
   }
@@ -330,15 +338,20 @@ export class CallSession {
   /**
    * Ask the agent to say the goodbye (data topic "teams.goodbye"; the agent
    * implements the actual speech - there is no bridge-side TTS on the room
-   * transport). Both governors funnel here; first one wins.
+   * transport). Both governors funnel here; first one wins. The worker-side
+   * playback is flushed first (assistant.cancel) so Teams-side buffered agent
+   * audio cannot eat the grace window; whether the AGENT interrupts its own
+   * in-flight turn to speak the goodbye is the agent's choice (see the example
+   * agents' teams.goodbye handler).
    */
-  private async performGoodbye(text: string): Promise<void> {
+  private performGoodbye(text: string): void {
     if (this.goodbyeInProgress) {
       this.log.info("goodbye already in progress; ignoring duplicate");
       return;
     }
     this.goodbyeInProgress = true;
     this.log.info("requesting agent goodbye");
+    this.sendToWorker({ type: "assistant.cancel", turnId: 0 });
     this.room?.sendGoodbye(text);
   }
 

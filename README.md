@@ -105,7 +105,14 @@ See [`.env.example`](./.env.example) (ships with the package). Notable:
 
 - **Barge-in flush**: interruption handling runs inside the LiveKit agent (as designed), but the room emits no interruption event the bridge could map to the wire protocol's `assistant.cancel` - so up to ~1 s of already-relayed agent audio can play out after the caller cuts in. Acceptable in practice; an agent-published data event could close this later.
 - **Video**: caller video/screenshare frames are not published into the room, and room video (avatar agents) is not bridged to the Teams tile.
-- **No deterministic goodbye**: the governor's goodbye is spoken by the agent (data topic), not synthesized by the bridge.
+- **No deterministic goodbye**: the governor's goodbye is spoken by the agent (`teams.goodbye` data topic), not synthesized by the bridge. The bridge flushes Teams-side playback first (`assistant.cancel`), but whether the agent interrupts its own in-flight sentence to speak the goodbye is the agent's choice - if its current turn outlasts `GOODBYE_GRACE_MS`, the goodbye gets cut. Have the `teams.goodbye` handler interrupt the current turn (see the example agents).
+- **Reconnects**: the LiveKit SDK retries transient drops internally (reconnecting/reconnected); `Disconnected` is final and ends the Teams call. There is no bridge-level room re-join beyond that.
+
+## Security notes
+
+- `GET /healthz` and `GET /metrics` are unauthenticated and served on the same port StandIn dials. Restrict the port at the network layer (or scrape through your ingress); the metrics expose only counters, never call content.
+- `TRUST_PROXY_XFF` takes the FIRST `X-Forwarded-For` hop, which is only trustworthy behind a single proxy that OVERWRITES the header (appending proxies make it client-controlled). Leave it off otherwise.
+- The default per-IP cap equals the global cap (no per-IP throttle) because legitimate traffic arrives from StandIn's small, fixed egress set - a small per-IP default would cap total concurrent calls. Set `MAX_CONNECTIONS_PER_IP` explicitly if your bridge is exposed more broadly.
 
 ## Layout
 

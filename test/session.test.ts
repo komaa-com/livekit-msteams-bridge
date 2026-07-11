@@ -151,6 +151,10 @@ test("full relay: session.start dispatch metadata, audio both ways, ping/pong, c
   ws.send(JSON.stringify({ type: "dtmf", digit: "7" }));
   await until(() => (fakeRoom.contexts.some((t) => t.includes('"7"')) ? true : undefined));
 
+  // recording state changes are surfaced to the agent (compliance disclosure)
+  ws.send(JSON.stringify({ type: "recording.status", status: "active" }));
+  await until(() => (fakeRoom.contexts.some((t) => t.includes("recording is now ACTIVE")) ? true : undefined));
+
   // worker-side governor: assistant.say → goodbye data message to the agent
   ws.send(JSON.stringify({ type: "assistant.say", text: "Goodbye now." }));
   await until(() => (fakeRoom.goodbyes.includes("Goodbye now.") ? true : undefined));
@@ -211,6 +215,11 @@ test("bridge-side governor: goodbye to the agent, then session.end(time-limit)",
   await until(() => (room.goodbyes.some((t) => t.includes("Time limit reached")) ? true : undefined));
   const end = await until(() => received.find((m) => m.type === "session.end"));
   assert.equal(end.reason, "time-limit");
+  // Teams-side playback is flushed before the goodbye so buffered agent audio
+  // cannot eat the grace window
+  const cancelIdx = received.findIndex((m) => m.type === "assistant.cancel");
+  const endIdx = received.findIndex((m) => m.type === "session.end");
+  assert.ok(cancelIdx >= 0 && cancelIdx < endIdx, "assistant.cancel must precede session.end");
   await until(() => (room.closed ? true : undefined));
   srv.close();
 });

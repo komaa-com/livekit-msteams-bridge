@@ -96,7 +96,7 @@ export function loadConfig(): BridgeConfig {
     livekitDeleteRoomOnEnd: process.env.LIVEKIT_DELETE_ROOM_ON_END !== "false",
     maxCallMinutes: numFromEnv("MAX_CALL_MINUTES", 0),
     goodbyeText:
-      process.env.GOODBYE_TEXT ??
+      process.env.GOODBYE_TEXT?.trim() ||
       "I'm sorry, we've reached the time limit for this call. Thank you for calling, goodbye!",
     goodbyeGraceMs: numFromEnv("GOODBYE_GRACE_MS", 8000),
     hmacFreshnessMs: numFromEnv("HMAC_FRESHNESS_MS", 60_000),
