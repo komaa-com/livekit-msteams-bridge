@@ -1,6 +1,14 @@
-# @komaa/livekit-msteams-bridge
+# Microsoft Teams Bridge for LiveKit Agents
 
-Put a [LiveKit Agent](https://docs.livekit.io/agents/) on a real **Microsoft Teams call** - including [avatar agents](https://github.com/livekit/agents/tree/main/examples/avatar_agents) (bitHuman, Tavus, ...) whose voice the caller hears in Teams.
+[![CI](https://github.com/komaa-com/livekit-msteams-bridge/actions/workflows/ci.yml/badge.svg)](https://github.com/komaa-com/livekit-msteams-bridge/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/@komaa/livekit-msteams-bridge.svg)](https://www.npmjs.com/package/@komaa/livekit-msteams-bridge)
+[![downloads](https://img.shields.io/npm/dm/@komaa/livekit-msteams-bridge.svg)](https://www.npmjs.com/package/@komaa/livekit-msteams-bridge)
+[![docs](https://img.shields.io/badge/docs-komaa--com.github.io-2563eb.svg)](https://komaa-com.github.io/livekit-msteams-bridge/)
+[![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+[![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6.svg)](https://www.typescriptlang.org/)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
+
+**`@komaa/livekit-msteams-bridge`** puts a [LiveKit Agent](https://docs.livekit.io/agents/) on a real **Microsoft Teams call** - including [avatar agents](https://github.com/livekit/agents/tree/main/examples/avatar_agents) (bitHuman, Tavus, ...) whose voice the caller hears in Teams.
 
 The hosted **StandIn media bridge** ([standin.komaa.com](https://standin.komaa.com)) joins the Teams call and dials into this bridge over an HMAC-authenticated WebSocket. Per call, the bridge creates one LiveKit room, **dispatches your agent into it** (explicit dispatch by `agentName`), joins as a participant, publishes the caller's audio, and relays the agent's audio back to Teams.
 
