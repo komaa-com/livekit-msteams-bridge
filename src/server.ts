@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { Duplex } from "node:stream";
 import { WebSocketServer } from "ws";
 import type { BridgeConfig } from "./config.js";
-import { isFresh, verify, SIGNATURE_HEADER, TIMESTAMP_HEADER } from "./hmac.js";
+import { isFresh, verify, LEGACY_SIGNATURE_HEADER, LEGACY_TIMESTAMP_HEADER, SIGNATURE_HEADER, TIMESTAMP_HEADER } from "./hmac.js";
 import { logger } from "./log.js";
 import { CallSession, type RoomConnector } from "./session.js";
 import { metricDec, metricInc, renderMetrics } from "./metrics.js";
@@ -83,8 +83,8 @@ export function authorizeUpgrade(
   if (!cfg.workerSharedSecret) {
     return { error: "bridge shared secret is not configured" }; // fail closed
   }
-  const tsHeader = req.headers[TIMESTAMP_HEADER];
-  const sigHeader = req.headers[SIGNATURE_HEADER];
+  const tsHeader = req.headers[TIMESTAMP_HEADER] ?? req.headers[LEGACY_TIMESTAMP_HEADER];
+  const sigHeader = req.headers[SIGNATURE_HEADER] ?? req.headers[LEGACY_SIGNATURE_HEADER];
   const ts = Number(Array.isArray(tsHeader) ? tsHeader[0] : tsHeader);
   const sig = (Array.isArray(sigHeader) ? sigHeader[0] : sigHeader) ?? "";
   if (!isFresh(ts, cfg.hmacFreshnessMs)) {

@@ -30,5 +30,9 @@ export function isFresh(timestampMs: number, windowMs: number, nowMs = Date.now(
   return Number.isFinite(timestampMs) && Math.abs(nowMs - timestampMs) <= windowMs;
 }
 
-export const TIMESTAMP_HEADER = "x-openclawteamsbridge-timestamp";
-export const SIGNATURE_HEADER = "x-openclawteamsbridge-signature";
+export const TIMESTAMP_HEADER = "x-standin-timestamp";
+export const SIGNATURE_HEADER = "x-standin-signature";
+/** Legacy header names (pre-rename). Still accepted during the transition; the
+ *  StandIn media bridge sends BOTH pairs, so either version interoperates. */
+export const LEGACY_TIMESTAMP_HEADER = "x-openclawteamsbridge-timestamp";
+export const LEGACY_SIGNATURE_HEADER = "x-openclawteamsbridge-signature";
