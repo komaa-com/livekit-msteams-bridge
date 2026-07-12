@@ -34,11 +34,11 @@ If your terminator is a reverse proxy and you rely on the per-IP cap, set `TRUST
 
 ## How a call is authenticated
 
-Each upgrade carries a millisecond timestamp and an HMAC-SHA256 signature over `"{timestampMs}.{callId}"`, hex-lowercased, in these headers:
+Each upgrade carries a millisecond timestamp and an HMAC-SHA256 signature over `"{timestampMs}.{callId}"`, hex-lowercased, in these headers (the legacy `X-OpenClawTeamsBridge-*` names are still accepted; StandIn sends both pairs during the transition):
 
 ```text
-X-OpenClawTeamsBridge-Timestamp: 1720000000000
-X-OpenClawTeamsBridge-Signature: <hmac-sha256 hex>
+X-StandIn-Timestamp: 1720000000000
+X-StandIn-Signature: <hmac-sha256 hex>
 ```
 
 The bridge checks the timestamp is fresh (`HMAC_FRESHNESS_MS`, default 60 s), verifies the signature in constant time, and enforces single use of the `(callId, ts, sig)` tuple within the window. A live session already owning that `callId` returns `409` rather than starting a second billed agent. See [Wire Protocol](/livekit-msteams-bridge/wire-protocol/) for the message flow that follows a successful handshake.

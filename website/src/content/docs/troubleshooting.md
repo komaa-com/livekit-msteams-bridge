@@ -10,7 +10,7 @@ Start by watching the bridge logs (`LOG_LEVEL=debug` for the most detail) and `G
 | Symptom in logs | Cause | Fix |
 | --- | --- | --- |
 | `rejected upgrade … bad signature` | `WORKER_SHARED_SECRET` differs between StandIn and the bridge | Copy the pairing secret exactly into `WORKER_SHARED_SECRET`; restart. |
-| `rejected upgrade … stale or missing timestamp` | Clock skew beyond `HMAC_FRESHNESS_MS`, or the headers aren't reaching the bridge | Fix host clock (NTP); make sure your proxy forwards the `X-OpenClawTeamsBridge-*` headers. |
+| `rejected upgrade … stale or missing timestamp` | Clock skew beyond `HMAC_FRESHNESS_MS`, or the headers aren't reaching the bridge | Fix host clock (NTP); make sure your proxy forwards the `X-StandIn-*` (or legacy `X-OpenClawTeamsBridge-*`) headers. |
 | `rejected upgrade … replayed handshake` | The same handshake tuple was seen twice | Usually a benign retry; if persistent, check for a proxy duplicating the upgrade. |
 | `rejected upgrade … bridge shared secret is not configured` | `WORKER_SHARED_SECRET` is unset | Set it. The bridge fails closed rather than accepting unauthenticated calls. |
 | `409 … already has a live session` | A second upgrade arrived for a `callId` already live | Expected on a reconnect/rollout; the original call keeps the slot. |
