@@ -26,6 +26,8 @@ const cfg: BridgeConfig = {
   preStartTimeoutMs: 0,
   workerIdleTimeoutMs: 0,
   trustProxy: false,
+  tileVideo: "off",
+  tileVideoFps: 10,
 };
 
 /** Fake LiveKit room: records what the bridge publishes, lets tests push agent audio back. */
@@ -49,6 +51,14 @@ class FakeRoom implements AgentRoomPort {
   }
   async close(): Promise<void> {
     this.closed = true;
+  }
+  avatarRelayStarted = 0;
+  avatarRelayStopped = 0;
+  async startAvatarRelay(): Promise<() => void> {
+    this.avatarRelayStarted++;
+    return () => {
+      this.avatarRelayStopped++;
+    };
   }
 }
 

@@ -17,6 +17,7 @@ import {
 import type { BridgeConfig } from "./config.js";
 import type { Logger } from "./log.js";
 import type { AgentRoomPort, RoomHandlers } from "./session.js";
+import { startVideoRelay, type TileSink } from "./videoRelay.js";
 
 /**
  * The real LiveKit side of a call: one room per Teams call, the bridge joins
@@ -172,6 +173,11 @@ export async function connectLiveKitRoom(
       void local
         .publishData(encoder.encode(JSON.stringify({ text })), { reliable: true, topic: TOPIC_GOODBYE })
         .catch((err: Error) => log.warn(`goodbye publish failed: ${err.message}`));
+    },
+    async startAvatarRelay(sink: TileSink): Promise<() => void> {
+      // The relay reads the agent identity captured on first audio subscribe
+      // (the avatar publishes both tracks); off/auto/<identity> per config.
+      return startVideoRelay(cfg, log, room, () => agentIdentity, sink);
     },
     async close(): Promise<void> {
       if (closed) {

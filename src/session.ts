@@ -1,10 +1,12 @@
 import type WebSocket from "ws";
+import type { TileSink } from "./videoRelay.js";
 import type { BridgeConfig } from "./config.js";
 import { logger, type Logger } from "./log.js";
 import {
   parseWorkerMessage,
   pcm16kBytesToMs,
   type AudioFrameMessage,
+  type DisplayFrameMessage,
   type SessionStartMessage,
   type WorkerOutbound,
 } from "./protocol.js";
@@ -37,6 +39,13 @@ export interface AgentRoomPort {
   sendGoodbye(text: string): void;
   /** Leave (and by default delete) the room. */
   close(): Promise<void>;
+  /**
+   * EXPERIMENTAL: start relaying the agent avatar's video onto the Teams tile,
+   * pushing display.frame through the given sink. Returns a stop() the caller
+   * runs on teardown. Optional: fake rooms omit it, and it no-ops when the
+   * feature or its optional encoder is off.
+   */
+  startAvatarRelay?(sink: TileSink): Promise<() => void>;
 }
 
 export interface RoomHandlers {
@@ -76,6 +85,7 @@ export class CallSession {
   private readonly connectRoom: RoomConnector;
 
   private room: AgentRoomPort | null = null;
+  private stopAvatarRelay: (() => void) | null = null;
   private callId: string;
   private closed = false;
   private sessionStarted = false;
@@ -299,6 +309,21 @@ export class CallSession {
     this.pendingContext = [];
     this.log.info(`LiveKit room "${room.roomName}" relaying`);
 
+    // EXPERIMENTAL: relay the agent avatar's video onto the Teams tile (off by
+    // default). The room owns the LiveKit side; this session is the sink.
+    if (this.cfg.tileVideo !== "off" && this.room.startAvatarRelay) {
+      this.room
+        .startAvatarRelay(this.avatarTileSink())
+        .then((stop) => {
+          if (this.closed) {
+            stop();
+          } else {
+            this.stopAvatarRelay = stop;
+          }
+        })
+        .catch((err) => this.log.warn(`avatar video relay failed to start: ${(err as Error).message}`));
+    }
+
     // bridge-side governor: LiveKit doesn't know about your billing
     if (this.cfg.maxCallMinutes > 0) {
       this.governorTimer = setTimeout(() => {
@@ -356,6 +381,23 @@ export class CallSession {
   }
 
   // ---- plumbing ----
+
+  /** The sink the avatar video relay pushes display.frame through (finding F: a
+   *  tighter, separate video budget so the tile falls back promptly under load). */
+  private avatarTileSink(): TileSink {
+    return {
+      isOpen: () => this.worker.readyState === this.worker.OPEN,
+      bufferedBytes: () => this.worker.bufferedAmount,
+      sendFrame: (seq, ts, dataBase64, width, height) => {
+        if (this.worker.readyState !== this.worker.OPEN) {
+          return;
+        }
+        const frame: DisplayFrameMessage = { type: "display.frame", seq, ts, mime: "image/jpeg", dataBase64, width, height };
+        metricInc("bridge_frames_to_worker_total");
+        this.worker.send(JSON.stringify(frame));
+      },
+    };
+  }
 
   private emitAudioToWorker(base64Pcm: string): void {
     const frame: AudioFrameMessage = {
@@ -423,6 +465,10 @@ export class CallSession {
       this.idleTimer = null;
     }
     if (this.room) {
+      if (this.stopAvatarRelay) {
+        this.stopAvatarRelay();
+        this.stopAvatarRelay = null;
+      }
       void this.room.close().catch(() => {});
       this.room = null;
     }
