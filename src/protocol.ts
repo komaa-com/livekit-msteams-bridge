@@ -97,11 +97,11 @@ export interface DisplayImageMessage {
 }
 
 /**
- * Bridge -> worker (EXPERIMENTAL avatar video relay). One frame of a continuous
- * bot-tile video stream, JPEG in base64. The worker shows the latest frame and
- * reverts to its own rendered tile if the stream stalls. Latest-wins: senders
- * MUST drop (not buffer) frames under backpressure, like audio.frame. Additive:
- * an older worker ignores it.
+ * Bridge -> worker (experimental). One frame of a continuous avatar-video
+ * stream onto the bot tile, JPEG in base64. Latest-wins: only the newest frame
+ * matters, and senders MUST drop (not buffer) frames under backpressure, like
+ * audio.frame. No lifecycle handshake: the first frames start the stream,
+ * silence ends it. Additive: an older worker ignores it.
  */
 export interface DisplayFrameMessage {
   type: "display.frame";

@@ -132,6 +132,7 @@ export async function startVideoRelay(
   // The single latest decoded-to-RGB frame awaiting encode+send. Latest-wins.
   let latest: { rgb: Buffer; w: number; h: number } | null = null;
   let activeTrackSid: string | null = null;
+  let activeTrack: RemoteTrack | null = null;
   let activeStream: VideoStream | null = null;
   let ticker: NodeJS.Timeout | null = null;
   let encoding = false;
@@ -140,6 +141,7 @@ export async function startVideoRelay(
     const stream = activeStream;
     activeStream = null;
     activeTrackSid = null;
+    activeTrack = null;
     latest = null; // stop sending (silence on the wire is how a stream ends)
     if (stream) {
       // Dispose the native handle NOW rather than waiting for the next frame
@@ -152,6 +154,7 @@ export async function startVideoRelay(
     cancelActiveStream(); // a track swap replaces the old stream, never stacks
     const sid = track.sid ?? "unknown";
     activeTrackSid = sid;
+    activeTrack = track;
     log.info(`avatar video relay: draining track from "${identity}"`);
     void (async () => {
       const stream = new VideoStream(track);
@@ -173,6 +176,9 @@ export async function startVideoRelay(
       } finally {
         if (activeTrackSid === sid) {
           activeTrackSid = null;
+        }
+        if (activeTrack === track) {
+          activeTrack = null;
         }
         if (activeStream === stream) {
           activeStream = null;
@@ -215,7 +221,9 @@ export async function startVideoRelay(
     drainTrack(track, participant.identity);
   };
   const onUnsubscribed = (track: RemoteTrack): void => {
-    if (track.sid && track.sid === activeTrackSid) {
+    // Match by object identity first: a track that never exposed a sid would
+    // otherwise never cancel the active stream and the drain would linger.
+    if (track === activeTrack || (track.sid && track.sid === activeTrackSid)) {
       cancelActiveStream();
     }
   };
@@ -237,10 +245,9 @@ export async function startVideoRelay(
       return;
     }
     const frame = latest;
-    // Consume the slot: each received frame is sent at most once. When the
-    // source stalls (track alive but no new frames), the wire goes silent and
-    // the receiving side can time the stream out, instead of us re-sending an
-    // identical stale frame forever.
+    // Consume the slot: each received frame is sent at most once, so a source
+    // that stops producing (track alive but no new frames) means a silent
+    // wire, not an endless repeat of one stale frame.
     latest = null;
     encoding = true;
     void (async () => {
@@ -260,7 +267,7 @@ export async function startVideoRelay(
   }, periodMs);
   ticker.unref?.();
 
-  log.info(`avatar video relay armed (mode=${cfg.tileVideo}, ${cfg.tileVideoFps} fps, tile ${TILE_W}x${TILE_H})`);
+  log.info(`avatar video relay armed (mode=${cfg.tileVideo}, ${cfg.tileVideoFps} fps, ${TILE_W}x${TILE_H})`);
 
   return () => {
     stopped = true;
