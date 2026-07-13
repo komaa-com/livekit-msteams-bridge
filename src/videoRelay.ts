@@ -1,5 +1,5 @@
 import { RoomEvent, TrackKind, VideoBufferType, VideoStream } from "@livekit/rtc-node";
-import type { Participant, RemoteTrack, Room } from "@livekit/rtc-node";
+import type { Participant, RemoteTrack, Room, VideoFrameEvent } from "@livekit/rtc-node";
 import type { BridgeConfig } from "./config.js";
 import type { Logger } from "./log.js";
 import { metricInc } from "./metrics.js";
@@ -27,6 +27,11 @@ const JPEG_QUALITY = 58;
 /** Separate, tighter than the 1 MB audio cap: a loaded video path must go
  *  quiet promptly rather than build up seconds of A/V skew. */
 const VIDEO_BACKPRESSURE_BYTES = 320 * 1024;
+/** Sender-side sanity clamp on the send rate: a talking-head avatar tile gains
+ *  nothing above this, and a higher rate only wastes local CPU/bandwidth on
+ *  encode+base64. Not a protocol limit - just how fast this sender bothers to
+ *  push. */
+const MAX_TILE_FPS = 20;
 const PUBLISH_ON_BEHALF = "lk.publish_on_behalf";
 
 /** What the relay needs to push a frame + read backpressure. */
@@ -126,7 +131,7 @@ export async function startVideoRelay(
     return () => {}; // sharp missing: no-op, already warned
   }
 
-  const periodMs = Math.max(1, Math.round(1000 / Math.max(1, Math.min(cfg.tileVideoFps, 20))));
+  const periodMs = Math.max(1, Math.round(1000 / Math.max(1, Math.min(cfg.tileVideoFps, MAX_TILE_FPS))));
   let stopped = false;
   let seq = 0;
   // The single latest decoded-to-RGB frame awaiting encode+send. Latest-wins.
@@ -134,18 +139,30 @@ export async function startVideoRelay(
   let activeTrackSid: string | null = null;
   let activeTrack: RemoteTrack | null = null;
   let activeStream: VideoStream | null = null;
+  // The reader that holds the stream's lock while the drain loop runs. We MUST
+  // cancel through this reader, not stream.cancel(): a VideoStream is a
+  // ReadableStream, the drain loop's async iterator locks it, and cancel() on a
+  // locked stream rejects without cancelling. Cancelling the reader unblocks a
+  // parked read() immediately (a quiet/swapped track may never send another
+  // frame to wake the loop) and disposes the native handle.
+  let activeReader: ReadableStreamDefaultReader<VideoFrameEvent> | null = null;
   let ticker: NodeJS.Timeout | null = null;
   let encoding = false;
 
   const cancelActiveStream = (): void => {
+    const reader = activeReader;
     const stream = activeStream;
+    activeReader = null;
     activeStream = null;
     activeTrackSid = null;
     activeTrack = null;
     latest = null; // stop sending (silence on the wire is how a stream ends)
-    if (stream) {
-      // Dispose the native handle NOW rather than waiting for the next frame
-      // to wake the drain loop (a quiet or swapped track may never send one).
+    if (reader) {
+      // Cancel via the lock holder so a parked read() resolves now and the
+      // drain loop's finally disposes the stream.
+      void reader.cancel().catch(() => {});
+    } else if (stream) {
+      // No reader yet (loop not entered): cancel the stream directly.
       void stream.cancel().catch(() => {});
     }
   };
@@ -159,12 +176,18 @@ export async function startVideoRelay(
     void (async () => {
       const stream = new VideoStream(track);
       activeStream = stream;
+      // Own an explicit reader so cancelActiveStream can cancel through the lock
+      // holder (see its comment). A raw `for await...of stream` locks the stream
+      // via a hidden reader we cannot reach to cancel.
+      const reader = stream.getReader();
+      activeReader = reader;
       try {
-        for await (const ev of stream) {
-          if (stopped) break;
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done || stopped) break;
           // Convert to packed RGB on the FFI side; overwrite the latest slot
           // (never queue - the ticker samples whatever is newest).
-          const rgb = ev.frame.convert(VideoBufferType.RGB24);
+          const rgb = value.frame.convert(VideoBufferType.RGB24);
           latest = {
             rgb: Buffer.from(rgb.data.buffer, rgb.data.byteOffset, rgb.data.length),
             w: rgb.width,
@@ -174,6 +197,10 @@ export async function startVideoRelay(
       } catch (err) {
         if (!stopped) log.warn(`avatar video stream ended: ${(err as Error).message}`);
       } finally {
+        reader.releaseLock();
+        if (activeReader === reader) {
+          activeReader = null;
+        }
         if (activeTrackSid === sid) {
           activeTrackSid = null;
         }
@@ -254,6 +281,13 @@ export async function startVideoRelay(
       try {
         const jpeg = await encode(frame.rgb, frame.w, frame.h);
         if (stopped || !sink.isOpen()) return;
+        // Re-check the budget after the encode yielded: audio may have filled
+        // the socket while we were off the loop. Dropping here keeps a video
+        // frame from nudging the shared socket buffer up and starving audio.
+        if (sink.bufferedBytes() > VIDEO_BACKPRESSURE_BYTES) {
+          metricInc("bridge_video_frames_dropped_total");
+          return;
+        }
         // ts rides the sender's AUDIO media timeline (not wall clock): the
         // audio clock freezes through listening silence, and skew is only
         // measurable if both streams share one clock.
