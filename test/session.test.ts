@@ -6,6 +6,7 @@ import { startServer } from "../src/server.js";
 import { sign } from "../src/hmac.js";
 import type { BridgeConfig } from "../src/config.js";
 import type { AgentRoomPort, RoomHandlers, RoomConnector } from "../src/session.js";
+import type { TileSink } from "../src/videoRelay.js";
 
 const cfg: BridgeConfig = {
   port: 0,
@@ -26,6 +27,8 @@ const cfg: BridgeConfig = {
   preStartTimeoutMs: 0,
   workerIdleTimeoutMs: 0,
   trustProxy: false,
+  tileVideo: "off",
+  tileVideoFps: 10,
 };
 
 /** Fake LiveKit room: records what the bridge publishes, lets tests push agent audio back. */
@@ -49,6 +52,16 @@ class FakeRoom implements AgentRoomPort {
   }
   async close(): Promise<void> {
     this.closed = true;
+  }
+  avatarRelayStarted = 0;
+  avatarRelayStopped = 0;
+  sink: TileSink | null = null;
+  async startAvatarRelay(sink?: TileSink): Promise<() => void> {
+    this.sink = sink ?? null;
+    this.avatarRelayStarted++;
+    return () => {
+      this.avatarRelayStopped++;
+    };
   }
 }
 
@@ -269,4 +282,35 @@ test("GET /metrics exposes call counters", async () => {
   assert.match(body, /# TYPE bridge_calls_total counter/);
   assert.match(body, /bridge_calls_total [1-9]/);
   assert.match(body, /bridge_frames_to_worker_total [1-9]/);
+});
+
+test("display.frame wire shape: the sink emits exactly the schema's field names", async () => {
+  // The drift guard's surface check cannot see display.frame field drift (every required
+  // field name also appears in another message this bridge constructs), so this test IS the
+  // wire-shape protection for the hand-written construction site: it exercises the real
+  // session sink end-to-end and pins the exact JSON keys.
+  const room = new FakeRoom();
+  const srv = startServer({ ...cfg, tileVideo: "auto" }, makeConnector(room));
+  await new Promise<void>((r) => srv.once("listening", () => r()));
+  const p = (srv.address() as AddressInfo).port;
+  const ws = await connectWorker(p, "call-lk-frame");
+  const received: Array<Record<string, unknown>> = [];
+  ws.on("message", (d) => received.push(JSON.parse(d.toString())));
+  ws.send(JSON.stringify({ type: "session.start", callId: "call-lk-frame", threadId: "t", caller: {} }));
+  await until(() => (room.sink ? true : undefined));
+
+  room.sink!.sendFrame(7, 1234, "AQID", 640, 360);
+  const frame = await until(() => received.find((m) => m.type === "display.frame"));
+  assert.deepEqual(
+    Object.keys(frame).sort(),
+    ["dataBase64", "height", "mime", "seq", "ts", "type", "width"],
+  );
+  assert.equal(frame.seq, 7);
+  assert.equal(frame.ts, 1234);
+  assert.equal(frame.mime, "image/jpeg");
+  assert.equal(frame.dataBase64, "AQID");
+  assert.equal(frame.width, 640);
+  assert.equal(frame.height, 360);
+  ws.close();
+  srv.close();
 });

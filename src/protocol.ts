@@ -96,6 +96,23 @@ export interface DisplayImageMessage {
   caption?: string | null;
 }
 
+/**
+ * Bridge -> worker (experimental). One frame of a continuous avatar-video
+ * stream onto the bot tile, JPEG in base64. Latest-wins: only the newest frame
+ * matters, and senders MUST drop (not buffer) frames under backpressure, like
+ * audio.frame. No lifecycle handshake: the first frames start the stream,
+ * silence ends it. Additive: an older worker ignores it.
+ */
+export interface DisplayFrameMessage {
+  type: "display.frame";
+  seq: number;
+  ts: number;
+  mime: string;
+  dataBase64: string;
+  width?: number | null;
+  height?: number | null;
+}
+
 /** Messages the worker sends to the bridge. */
 export type WorkerInbound =
   | SessionStartMessage
@@ -115,7 +132,8 @@ export type WorkerOutbound =
   | PongMessage
   | SessionEndMessage
   | ExpressionMessage
-  | DisplayImageMessage;
+  | DisplayImageMessage
+  | DisplayFrameMessage;
 
 /** Parse a worker frame; returns null on junk rather than throwing (drop + log at call site). */
 export function parseWorkerMessage(raw: string | Buffer): WorkerInbound | null {

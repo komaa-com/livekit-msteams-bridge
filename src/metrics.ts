@@ -16,6 +16,8 @@ const META: Record<string, { help: string; type: "counter" | "gauge" }> = {
   bridge_frames_to_agent_total: { help: "Caller audio frames published into the LiveKit room", type: "counter" },
   bridge_frames_to_worker_total: { help: "Agent audio frames relayed to the worker", type: "counter" },
   bridge_frames_dropped_total: { help: "Frames dropped under worker backpressure", type: "counter" },
+  bridge_video_frames_sent_total: { help: "Avatar video frames relayed to the worker (display.frame)", type: "counter" },
+  bridge_video_frames_dropped_total: { help: "Avatar video frames skipped under the video backpressure budget", type: "counter" },
   bridge_room_connect_failures_total: { help: "LiveKit room connect/dispatch failures", type: "counter" },
 };
 
