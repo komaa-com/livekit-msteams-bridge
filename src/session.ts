@@ -382,15 +382,15 @@ export class CallSession {
 
   // ---- plumbing ----
 
-  /** The sink the avatar video relay pushes display.frame through (finding F: a
-   *  tighter, separate video budget so the tile falls back promptly under load). */
+  /** The sink the avatar video relay pushes display.frame through. Video gets
+   *  its own tighter budget so it goes quiet promptly under load. */
   private avatarTileSink(): TileSink {
     return {
       isOpen: () => this.worker.readyState === this.worker.OPEN,
       bufferedBytes: () => this.worker.bufferedAmount,
       // The AUDIO media timeline (what outbound audio.frame.timestampMs rides):
       // it freezes through listening silence, unlike a wall clock, so video ts
-      // stamped from it keeps A/V skew measurable (design §6).
+      // stamped from it keeps A/V skew measurable.
       nowMediaMs: () => Math.round(this.outTimestampMs),
       sendFrame: (seq, ts, dataBase64, width, height) => {
         if (this.worker.readyState !== this.worker.OPEN) {

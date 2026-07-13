@@ -14,16 +14,18 @@ import { metricInc } from "./metrics.js";
  *
  * Delivery: rtc-node's VideoStream is an unbounded ReadableStream, so we drain
  * it continuously into a single "latest" slot and send from a fixed-rate ticker
- * (latest-wins at the source). Frames are dropped, never queued, under worker
- * backpressure. seq is monotonic; ts is the sender media-timeline ms (shared
- * with outbound audio.frame) so the worker/consumer can measure A/V skew.
+ * (latest-wins at the source). Each frame is sent at most once - a stalled
+ * source means a silent wire, not a frozen repeat. Frames are dropped, never
+ * queued, under worker backpressure. seq is monotonic; ts is the sender
+ * media-timeline ms (shared with outbound audio.frame) so A/V skew stays
+ * measurable.
  */
 
 const TILE_W = 640;
 const TILE_H = 360;
 const JPEG_QUALITY = 58;
-/** Separate, tighter than the 1 MB audio cap: video must fall back to the
- *  rendered avatar promptly rather than build up seconds of skew. */
+/** Separate, tighter than the 1 MB audio cap: a loaded video path must go
+ *  quiet promptly rather than build up seconds of A/V skew. */
 const VIDEO_BACKPRESSURE_BYTES = 320 * 1024;
 const PUBLISH_ON_BEHALF = "lk.publish_on_behalf";
 
@@ -64,8 +66,8 @@ async function loadJpegEncoder(log: Logger): Promise<JpegEncoder | null> {
         jpeg(o: { quality: number }): { toBuffer(): Promise<Buffer> };
       };
     };
-    // Downscale to the tile before encoding: the worker scales to its tile
-    // regardless, so shipping native avatar resolution only wastes bandwidth.
+    // Downscale to the tile size before encoding: shipping the avatar's
+    // native resolution only wastes bandwidth.
     return async (rgb, width, height) =>
       mod(rgb, { raw: { width, height, channels: 3 } })
         .resize(TILE_W, TILE_H, { fit: "fill" })
@@ -138,7 +140,7 @@ export async function startVideoRelay(
     const stream = activeStream;
     activeStream = null;
     activeTrackSid = null;
-    latest = null; // stop sending; the worker reverts to its rendered avatar
+    latest = null; // stop sending (silence on the wire is how a stream ends)
     if (stream) {
       // Dispose the native handle NOW rather than waiting for the next frame
       // to wake the drain loop (a quiet or swapped track may never send one).
@@ -235,6 +237,11 @@ export async function startVideoRelay(
       return;
     }
     const frame = latest;
+    // Consume the slot: each received frame is sent at most once. When the
+    // source stalls (track alive but no new frames), the wire goes silent and
+    // the receiving side can time the stream out, instead of us re-sending an
+    // identical stale frame forever.
+    latest = null;
     encoding = true;
     void (async () => {
       try {
@@ -242,7 +249,7 @@ export async function startVideoRelay(
         if (stopped || !sink.isOpen()) return;
         // ts rides the sender's AUDIO media timeline (not wall clock): the
         // audio clock freezes through listening silence, and skew is only
-        // measurable if both streams share one clock (design §6).
+        // measurable if both streams share one clock.
         sink.sendFrame(seq++, sink.nowMediaMs(), jpeg.toString("base64"), TILE_W, TILE_H);
       } catch (err) {
         log.warn(`avatar video encode failed: ${(err as Error).message}`);
