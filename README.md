@@ -57,7 +57,7 @@ Any LiveKit agent works. Register it with an explicit **agent name** so the brid
 ```python
 # Python (agents >= 1.0): explicit dispatch by name
 if __name__ == "__main__":
-    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint, agent_name="my-teams-agent"))
+    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint, agent_name="standin-agent"))
 ```
 
 Per-call metadata arrives in the job context (`ctx.job.metadata`, JSON):
@@ -74,7 +74,7 @@ Optional: subscribe to the bridge's data topics -
 LIVEKIT_URL=wss://your-project.livekit.cloud \
 LIVEKIT_API_KEY=API... \
 LIVEKIT_API_SECRET=... \
-LIVEKIT_AGENT_NAME=my-teams-agent \
+LIVEKIT_AGENT_NAME=standin-agent \
 WORKER_SHARED_SECRET=... \
   npx @komaa/livekit-msteams-bridge
 ```

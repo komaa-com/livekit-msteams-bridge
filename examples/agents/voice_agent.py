@@ -34,7 +34,7 @@ from livekit.plugins import openai, silero
 
 load_dotenv()
 
-AGENT_NAME = "teams-voice-agent"  # must equal the bridge's LIVEKIT_AGENT_NAME
+AGENT_NAME = "standin-voice-agent"  # must equal the bridge's LIVEKIT_AGENT_NAME
 
 
 def prewarm(proc: JobProcess):

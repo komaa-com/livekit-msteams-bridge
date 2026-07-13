@@ -31,7 +31,7 @@ from livekit.plugins import bithuman, openai, silero
 
 load_dotenv()
 
-AGENT_NAME = "teams-avatar-agent"  # must equal the bridge's LIVEKIT_AGENT_NAME
+AGENT_NAME = "standin-avatar-agent"  # must equal the bridge's LIVEKIT_AGENT_NAME
 
 
 def prewarm(proc: JobProcess):

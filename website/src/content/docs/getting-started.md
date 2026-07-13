@@ -14,12 +14,12 @@ Any LiveKit agent works unchanged. Register it with an **agent name** so the bri
 from livekit.agents import cli, WorkerOptions
 
 if __name__ == "__main__":
-    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint, agent_name="my-teams-agent"))
+    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint, agent_name="standin-agent"))
 ```
 
 ```ts
 // Node (@livekit/agents)
-cli.runApp(new WorkerOptions({ agent: fileURLToPath(import.meta.url), agentName: "my-teams-agent" }));
+cli.runApp(new WorkerOptions({ agent: fileURLToPath(import.meta.url), agentName: "standin-agent" }));
 ```
 
 That `agent_name` is what you pass to the bridge as `LIVEKIT_AGENT_NAME`.
@@ -36,7 +36,7 @@ Run it directly:
 LIVEKIT_URL=wss://your-project.livekit.cloud \
 LIVEKIT_API_KEY=API... \
 LIVEKIT_API_SECRET=... \
-LIVEKIT_AGENT_NAME=my-teams-agent \
+LIVEKIT_AGENT_NAME=standin-agent \
 WORKER_SHARED_SECRET=... \
   npx @komaa/livekit-msteams-bridge
 ```
@@ -94,8 +94,8 @@ Call your Teams bot (or join the sandbox meeting). In the bridge logs you should
 ```text
 INFO  [server] worker connected for call 19:meeting_ab… (1/64)
 INFO  [call:19:meeting_ab] session.start (direction=inbound, recording=unknown)
-INFO  [call:19:meeting_ab] LiveKit room "msteams-19:meeting_ab…" joined (agent "my-teams-agent" dispatched)
-INFO  [call:19:meeting_ab] subscribed to agent audio from "my-teams-agent"
+INFO  [call:19:meeting_ab] LiveKit room "msteams-19:meeting_ab…" joined (agent "standin-agent" dispatched)
+INFO  [call:19:meeting_ab] subscribed to agent audio from "standin-agent"
 INFO  [call:19:meeting_ab] LiveKit room "msteams-19:meeting_ab…" relaying
 ```
 

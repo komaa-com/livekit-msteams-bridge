@@ -32,18 +32,18 @@ Prefer plain pip? `pip install -r requirements.txt && python voice_agent.py dev`
 Each agent has its own Dockerfile; `download-files` is baked at build time so cold starts are fast, and secrets are passed at RUNTIME (never into the image):
 
 ```bash
-docker build -f Dockerfile.voice_agent -t teams-voice-agent .
-docker run --env-file .env teams-voice-agent           # ENTRYPOINT runs `start`
+docker build -f Dockerfile.voice_agent -t standin-voice-agent .
+docker run --env-file .env standin-voice-agent           # ENTRYPOINT runs `start`
 
-docker build -f Dockerfile.avatar_agent -t teams-avatar-agent .
+docker build -f Dockerfile.avatar_agent -t standin-avatar-agent .
 docker run --env-file .env \
   -v ./avatar.imx:/models/avatar.imx \
   -e BITHUMAN_MODEL_PATH=/models/avatar.imx \
-  teams-avatar-agent
+  standin-avatar-agent
 ```
 
 ## Connect to Teams
 
-Run the bridge (see [`../basic-bridge`](../basic-bridge) or `npx @komaa/livekit-msteams-bridge`) with `LIVEKIT_AGENT_NAME=teams-voice-agent` (or `teams-avatar-agent`), point a StandIn identity at it, and call your Teams bot.
+Run the bridge (see [`../basic-bridge`](../basic-bridge) or `npx @komaa/livekit-msteams-bridge`) with `LIVEKIT_AGENT_NAME=standin-voice-agent` (or `standin-avatar-agent`), point a StandIn identity at it, and call your Teams bot.
 
 Swap the plugins freely - Azure/Google STT+TTS, a LangChain graph through `livekit-plugins-langchain`, an OpenAI Realtime session: the bridge only relays room audio and never sees your model stack.
