@@ -25,6 +25,15 @@ The bridge logs `session.start` and `LiveKit room … joined`, but no `subscribe
 - **Wrong project** - `LIVEKIT_URL`/`LIVEKIT_API_KEY`/`LIVEKIT_API_SECRET` point at a different project than the one your agent worker connects to. Dispatch only reaches agents on the same project.
 - **`bridge_room_connect_failures_total` climbing** on `/metrics` means the bridge couldn't join or dispatch at all - check the API key/secret and that the URL is reachable.
 
+## The worker won't start, or the first call takes minutes to answer
+
+Large models - avatar runtimes (bitHuman, Tavus), local STT/TTS, turn detectors - take real time to load, and that trips two setup problems worth calling out because the symptom looks like the wire path is broken when it isn't:
+
+- **The worker exits at startup with `TimeoutError` / "error initializing process".** The model load overran the process-init deadline. Raise it: `WorkerOptions(..., initialize_process_timeout=300)` in Python (Node's `WorkerOptions` has the equivalent option). A bitHuman `.imx` model converting for the first time can take a couple of minutes.
+- **The first call takes minutes to answer; later calls are instant.** A cold job process loads the model on demand. Two fixes, use both: load the model in your `prewarm` function and stash it in `proc.userdata` (so the entrypoint reuses it), and keep a process warm with `num_idle_processes >= 1` so a dispatch never waits on a cold load. Run `python your_agent.py download-files` once first to prefetch downloadable weights (silero VAD, the turn detector).
+
+If a call connects and dispatches but the agent then sits silent for a long time before speaking, this - not the handshake or the room - is almost always the cause.
+
 ## The agent joined but there's no audio
 
 - **Caller can't hear the agent** - confirm the agent actually publishes an audio track (the bridge relays the first remote audio track). Avatar agents publish audio via the avatar participant; the bridge handles that, but a misconfigured avatar that publishes only video will be silent.

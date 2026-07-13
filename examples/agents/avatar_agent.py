@@ -27,6 +27,7 @@ from livekit.agents import (
     WorkerType,
     cli,
 )
+from bithuman import AsyncBithuman
 from livekit.plugins import bithuman, openai, silero
 
 load_dotenv()
@@ -35,7 +36,16 @@ AGENT_NAME = "standin-avatar-agent"  # must equal the bridge's LIVEKIT_AGENT_NAM
 
 
 def prewarm(proc: JobProcess):
+    # Load BOTH the VAD and the bitHuman avatar model here, in the prewarmed
+    # process, so the first call doesn't pay a cold model load (an .imx converts
+    # in ~2 min the first time). The entrypoint reuses this runtime. Combined with
+    # num_idle_processes below, a dispatch never waits on a model load.
     proc.userdata["vad"] = silero.VAD.load()
+    proc.userdata["bithuman"] = AsyncBithuman(
+        model_path=os.environ["BITHUMAN_MODEL_PATH"],
+        api_secret=os.environ["BITHUMAN_API_SECRET"],
+        load_model=True,
+    )
 
 
 async def entrypoint(ctx: JobContext):
@@ -52,10 +62,12 @@ async def entrypoint(ctx: JobContext):
     )
 
     # the avatar runtime lip-syncs the session's TTS and publishes
-    # synchronized audio+video into the room; the bridge relays the audio to Teams
+    # synchronized audio+video into the room; the bridge relays the audio to Teams.
+    # Reuse the runtime prewarmed above so this call starts instantly.
     avatar = bithuman.AvatarSession(
         model_path=os.environ["BITHUMAN_MODEL_PATH"],
         api_secret=os.environ["BITHUMAN_API_SECRET"],
+        runtime=ctx.proc.userdata["bithuman"],
     )
     await avatar.start(session, room=ctx.room)
 
@@ -91,5 +103,10 @@ if __name__ == "__main__":
             prewarm_fnc=prewarm,
             worker_type=WorkerType.ROOM,
             agent_name=AGENT_NAME,
+            # The one-time .imx conversion can take minutes; the default 60s
+            # process-init deadline would kill the worker mid-load.
+            initialize_process_timeout=300,
+            # Keep one process warm so avatar dispatch is instant, not a cold load.
+            num_idle_processes=1,
         ),
     )
