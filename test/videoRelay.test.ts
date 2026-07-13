@@ -46,3 +46,16 @@ test("a debugger's publish_on_behalf for a different agent is not selected", () 
   // No avatar for agent-1, so it falls back to the agent participant itself.
   assert.equal(selectParticipant(r, "auto", "agent-1")?.identity, "agent-1");
 });
+
+test("avatar-publishes-both config: the audio binding IS the avatar; self branch selects it", () => {
+  // In the verified avatar setup the avatar participant publishes BOTH tracks,
+  // so the bridge binds agentIdentity to the avatar itself. Its
+  // publish_on_behalf names the (silent) agent, so the byBehalf branch misses
+  // and the self branch must select the avatar.
+  const r = room([
+    { identity: "my-agent" }, // publishes nothing (audio forwarded to the avatar)
+    { identity: "bithuman-avatar-agent", attributes: { [PUBLISH_ON_BEHALF]: "my-agent" } },
+  ]);
+  const chosen = selectParticipant(r, "auto", "bithuman-avatar-agent");
+  assert.equal(chosen?.identity, "bithuman-avatar-agent");
+});

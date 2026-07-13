@@ -2,6 +2,7 @@ import { RoomEvent, TrackKind, VideoBufferType, VideoStream } from "@livekit/rtc
 import type { Participant, RemoteTrack, Room } from "@livekit/rtc-node";
 import type { BridgeConfig } from "./config.js";
 import type { Logger } from "./log.js";
+import { metricInc } from "./metrics.js";
 
 /**
  * EXPERIMENTAL: relay the agent avatar's published video track onto the Teams
@@ -32,6 +33,13 @@ export interface TileSink {
   isOpen(): boolean;
   /** Bytes currently buffered on the worker socket (drop when too high). */
   bufferedBytes(): number;
+  /**
+   * The sender's AUDIO media timeline, in ms (the same clock outbound
+   * audio.frame.timestampMs rides). Video ts MUST come from this clock - a
+   * wall clock keeps ticking through listening silence while the audio clock
+   * does not, which would confound the A/V skew measurement with clock drift.
+   */
+  nowMediaMs(): number;
   /** Send one display.frame (already JSON-shaped by the caller's session). */
   sendFrame(seq: number, ts: number, dataBase64: string, width: number, height: number): void;
 }
@@ -119,19 +127,34 @@ export async function startVideoRelay(
   const periodMs = Math.max(1, Math.round(1000 / Math.max(1, Math.min(cfg.tileVideoFps, 20))));
   let stopped = false;
   let seq = 0;
-  const startMs = Date.now();
   // The single latest decoded-to-RGB frame awaiting encode+send. Latest-wins.
   let latest: { rgb: Buffer; w: number; h: number } | null = null;
   let activeTrackSid: string | null = null;
+  let activeStream: VideoStream | null = null;
   let ticker: NodeJS.Timeout | null = null;
   let encoding = false;
 
+  const cancelActiveStream = (): void => {
+    const stream = activeStream;
+    activeStream = null;
+    activeTrackSid = null;
+    latest = null; // stop sending; the worker reverts to its rendered avatar
+    if (stream) {
+      // Dispose the native handle NOW rather than waiting for the next frame
+      // to wake the drain loop (a quiet or swapped track may never send one).
+      void stream.cancel().catch(() => {});
+    }
+  };
+
   const drainTrack = (track: RemoteTrack, identity: string): void => {
-    activeTrackSid = track.sid ?? "unknown";
+    cancelActiveStream(); // a track swap replaces the old stream, never stacks
+    const sid = track.sid ?? "unknown";
+    activeTrackSid = sid;
     log.info(`avatar video relay: draining track from "${identity}"`);
     void (async () => {
+      const stream = new VideoStream(track);
+      activeStream = stream;
       try {
-        const stream = new VideoStream(track);
         for await (const ev of stream) {
           if (stopped) break;
           // Convert to packed RGB on the FFI side; overwrite the latest slot
@@ -146,41 +169,81 @@ export async function startVideoRelay(
       } catch (err) {
         if (!stopped) log.warn(`avatar video stream ended: ${(err as Error).message}`);
       } finally {
-        if (activeTrackSid === (track.sid ?? "unknown")) activeTrackSid = null;
+        if (activeTrackSid === sid) {
+          activeTrackSid = null;
+        }
+        if (activeStream === stream) {
+          activeStream = null;
+        }
       }
     })();
   };
 
+  // Start draining the selected participant's ALREADY-subscribed video track,
+  // if any. TrackSubscribed ordering is unspecified: the avatar's video can
+  // subscribe BEFORE its audio binds the agent identity, in which case the
+  // event-driven path alone would never start (the event will not re-fire).
+  // Re-running this scan whenever the identity may have just bound closes
+  // that race.
+  const tryStartFromExisting = (): void => {
+    if (stopped || activeTrackSid) return;
+    const chosen = selectParticipant(room, cfg.tileVideo, getAgentIdentity());
+    if (!chosen) return;
+    for (const pub of chosen.trackPublications.values()) {
+      if (pub.kind === TrackKind.KIND_VIDEO && pub.track) {
+        drainTrack(pub.track as RemoteTrack, chosen.identity);
+        return;
+      }
+    }
+  };
+
   const onSubscribed = (track: RemoteTrack, _pub: unknown, participant: Participant): void => {
-    if (stopped || track.kind !== TrackKind.KIND_VIDEO || activeTrackSid) return;
+    if (stopped || activeTrackSid) return;
+    if (track.kind === TrackKind.KIND_AUDIO) {
+      // The audio subscribe is what binds the agent identity (in the room
+      // wiring, registered before us, so it has run by the time we get this
+      // event). The selected participant's video may already be subscribed -
+      // pick it up now.
+      tryStartFromExisting();
+      return;
+    }
+    if (track.kind !== TrackKind.KIND_VIDEO) return;
     const chosen = selectParticipant(room, cfg.tileVideo, getAgentIdentity());
     if (!chosen || chosen.identity !== participant.identity) return;
     drainTrack(track, participant.identity);
   };
   const onUnsubscribed = (track: RemoteTrack): void => {
     if (track.sid && track.sid === activeTrackSid) {
-      activeTrackSid = null;
-      latest = null; // stop sending; the worker reverts to its rendered avatar
+      cancelActiveStream();
     }
   };
 
   room.on(RoomEvent.TrackSubscribed, onSubscribed);
   room.on(RoomEvent.TrackUnsubscribed, onUnsubscribed);
+  // The relay may be armed after tracks already subscribed (session wires it
+  // once the room is relaying): scan once at start.
+  tryStartFromExisting();
 
   // Fixed-rate send ticker: encode the latest slot and push it, honoring the
   // video backpressure budget. Skips a tick when the encode is still running or
   // there is no fresh frame.
   ticker = setInterval(() => {
     if (stopped || latest === null || encoding) return;
-    if (!sink.isOpen() || sink.bufferedBytes() > VIDEO_BACKPRESSURE_BYTES) return;
+    if (!sink.isOpen()) return;
+    if (sink.bufferedBytes() > VIDEO_BACKPRESSURE_BYTES) {
+      metricInc("bridge_video_frames_dropped_total");
+      return;
+    }
     const frame = latest;
     encoding = true;
     void (async () => {
       try {
         const jpeg = await encode(frame.rgb, frame.w, frame.h);
         if (stopped || !sink.isOpen()) return;
-        const ts = Date.now() - startMs;
-        sink.sendFrame(seq++, ts, jpeg.toString("base64"), TILE_W, TILE_H);
+        // ts rides the sender's AUDIO media timeline (not wall clock): the
+        // audio clock freezes through listening silence, and skew is only
+        // measurable if both streams share one clock (design §6).
+        sink.sendFrame(seq++, sink.nowMediaMs(), jpeg.toString("base64"), TILE_W, TILE_H);
       } catch (err) {
         log.warn(`avatar video encode failed: ${(err as Error).message}`);
       } finally {
@@ -197,6 +260,6 @@ export async function startVideoRelay(
     if (ticker) clearInterval(ticker);
     room.off(RoomEvent.TrackSubscribed, onSubscribed);
     room.off(RoomEvent.TrackUnsubscribed, onUnsubscribed);
-    latest = null;
+    cancelActiveStream();
   };
 }

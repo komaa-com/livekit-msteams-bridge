@@ -388,12 +388,16 @@ export class CallSession {
     return {
       isOpen: () => this.worker.readyState === this.worker.OPEN,
       bufferedBytes: () => this.worker.bufferedAmount,
+      // The AUDIO media timeline (what outbound audio.frame.timestampMs rides):
+      // it freezes through listening silence, unlike a wall clock, so video ts
+      // stamped from it keeps A/V skew measurable (design §6).
+      nowMediaMs: () => Math.round(this.outTimestampMs),
       sendFrame: (seq, ts, dataBase64, width, height) => {
         if (this.worker.readyState !== this.worker.OPEN) {
           return;
         }
         const frame: DisplayFrameMessage = { type: "display.frame", seq, ts, mime: "image/jpeg", dataBase64, width, height };
-        metricInc("bridge_frames_to_worker_total");
+        metricInc("bridge_video_frames_sent_total");
         this.worker.send(JSON.stringify(frame));
       },
     };
