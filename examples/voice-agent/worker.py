@@ -12,7 +12,7 @@ Swap the STT/LLM/TTS plugins for any stack you like (Azure, Google, Deepgram,
 OpenAI realtime, a LangChain graph via livekit-plugins-langchain, ...) - the
 bridge does not care, it only relays room audio.
 
-Run:  python voice_agent.py dev
+Run:  python worker.py dev
 Env:  LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET, OPENAI_API_KEY
 """
 

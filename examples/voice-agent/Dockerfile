@@ -20,16 +20,16 @@ COPY pyproject.toml uv.lock ./
 RUN pip install --no-cache-dir uv
 RUN uv sync --frozen --no-install-project --no-dev
 
-COPY voice_agent.py .
+COPY worker.py .
 
 # Prefetch model weights (silero VAD etc.) at BUILD time so cold starts are
 # fast and the runtime needs no outbound model downloads. Needs no secrets.
-RUN python voice_agent.py download-files
+RUN python -m livekit.agents download-files
 
 # LiveKit agent workers expose a health/debug port
 EXPOSE 8081
 
 # Secrets are provided at RUNTIME (docker run --env-file .env ...), never baked
 # into the image: LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET, OPENAI_API_KEY.
-ENTRYPOINT ["python", "voice_agent.py"]
+ENTRYPOINT ["python", "worker.py"]
 CMD ["start"]

@@ -1,13 +1,14 @@
 """LiveKit avatar agent (bitHuman) answering Microsoft Teams calls via
 @komaa/livekit-msteams-bridge.
 
-Identical to voice_agent.py plus a bitHuman AvatarSession, following LiveKit's
-avatar example (https://github.com/livekit/agents/tree/main/examples/avatar_agents/bithuman).
+A minimal voice pipeline (OpenAI STT/LLM/TTS + silero VAD) plus a bitHuman
+AvatarSession, following LiveKit's avatar example
+(https://github.com/livekit/agents/tree/main/examples/avatar_agents/bithuman).
 The Teams caller HEARS the avatar's synchronized voice; the avatar's video
 stays in the LiveKit room in v1 (the Teams video tile is rendered by the
 StandIn media bridge's own animated avatar).
 
-Run:  python avatar_agent.py dev
+Run:  python worker.py dev
 Env:  LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET, OPENAI_API_KEY,
       BITHUMAN_API_SECRET, BITHUMAN_MODEL_PATH (an .imx avatar model)
 """
