@@ -224,6 +224,10 @@ export async function startVideoRelay(
     if (stopped || activeTrackSid) return;
     const chosen = selectParticipant(room, cfg.tileVideo, getAgentIdentity());
     if (!chosen) return;
+    // Match by track KIND only, never by track source: avatar workers (bitHuman
+    // etc.) publish their video UNTAGGED - it arrives as SOURCE_UNKNOWN, not
+    // SOURCE_CAMERA - so a source filter would select the participant yet stream
+    // zero frames. Take the video publication's track directly (VideoStream(track)).
     for (const pub of chosen.trackPublications.values()) {
       if (pub.kind === TrackKind.KIND_VIDEO && pub.track) {
         drainTrack(pub.track as RemoteTrack, chosen.identity);
