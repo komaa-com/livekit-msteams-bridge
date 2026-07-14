@@ -21,10 +21,10 @@ COPY pyproject.toml uv.lock ./
 RUN pip install --no-cache-dir uv
 RUN uv sync --frozen --no-install-project --no-dev
 
-COPY avatar_agent.py .
+COPY worker.py .
 
 # Prefetch model weights (silero VAD etc.) at BUILD time. Needs no secrets.
-RUN python avatar_agent.py download-files
+RUN python worker.py download-files
 
 # LiveKit agent workers expose a health/debug port
 EXPOSE 8081
@@ -34,5 +34,5 @@ EXPOSE 8081
 #     -e BITHUMAN_MODEL_PATH=/models/avatar.imx  <image>
 # Runtime secrets: LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET,
 # OPENAI_API_KEY, BITHUMAN_API_SECRET.
-ENTRYPOINT ["python", "avatar_agent.py"]
+ENTRYPOINT ["python", "worker.py"]
 CMD ["start"]
