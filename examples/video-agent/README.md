@@ -1,9 +1,10 @@
-# Example LiveKit agent for Teams calls
+# Video (avatar) agent for Teams calls
 
 A ready-made agent the bridge can dispatch onto a Microsoft Teams call:
 `worker.py` is a minimal voice pipeline (OpenAI STT/LLM/TTS + silero VAD) plus a
 [bitHuman](https://github.com/livekit/agents/tree/main/examples/avatar_agents/bithuman)
-avatar - the caller hears the avatar's synchronized voice.
+avatar - the caller hears the avatar's synchronized voice. For a voice-only
+agent with no avatar, see [`../voice-agent`](../voice-agent).
 
 Any existing LiveKit agent works with the bridge unchanged except for three integration points, all shown in the example:
 
