@@ -66,7 +66,7 @@ Per-call metadata arrives in the job context (`ctx.job.metadata`, JSON):
 Optional: subscribe to the bridge's data topics -
 `teams.context` (participants/DTMF as `{text}`) and `teams.goodbye` (`{text}` the agent should speak before the call is cut).
 
-**Avatar agents** (e.g. the [bitHuman example](https://github.com/livekit/agents/tree/main/examples/avatar_agents/bithuman)): the caller hears the avatar's synchronized audio. The avatar's *video* stays in the room in v1 - the Teams tile is rendered by StandIn's own animated avatar (RMS lip-sync). Bridging room video to the Teams tile is on the roadmap.
+**Avatar agents** (e.g. the [bitHuman example](https://github.com/livekit/agents/tree/main/examples/avatar_agents/bithuman)): the caller always hears the avatar's synchronized audio. To also show the avatar's face on the Teams tile, set `LIVEKIT_TILE_VIDEO=auto` - the bridge then subscribes to the agent's avatar video and relays it onto the caller's tile. Left off (the default), the tile shows StandIn's own animated avatar (RMS lip-sync).
 
 ### 2. Run the bridge
 
@@ -97,13 +97,14 @@ Pick a tier at [standin.komaa.com](https://standin.komaa.com), pair an identity,
 ## Examples
 
 - [`examples/basic-bridge/`](./examples/basic-bridge/) - embed the package in your own Node project (`npm install @komaa/livekit-msteams-bridge`, three lines of code).
-- [`examples/agents/`](./examples/agents/) - two ready-made Python agents the bridge can dispatch: a minimal voice pipeline and a bitHuman avatar variant, both showing the three Teams integration points (`agent_name`, `ctx.job.metadata`, the `teams.*` data topics).
+- [`examples/voice-agent/`](./examples/voice-agent/) and [`examples/video-agent/`](./examples/video-agent/) - two ready-made Python agents the bridge can dispatch: a minimal voice pipeline and a bitHuman avatar variant, both showing the three Teams integration points (`agent_name`, `ctx.job.metadata`, the `teams.*` data topics).
 
 ## Configuration
 
 See [`.env.example`](./.env.example) (ships with the package). Notable:
 
 - `LIVEKIT_AGENT_NAME` - explicit dispatch (LiveKit's recommended model). Unset = automatic dispatch (agent joins every room; prototype-only).
+- `LIVEKIT_TILE_VIDEO` (default `off`) - relay an avatar agent's video onto the Teams tile. `auto` uses the agent participant; or name a specific participant identity. `off` keeps StandIn's built-in animated avatar. `LIVEKIT_TILE_VIDEO_FPS` (default `15`) sets the relay send rate.
 - `LIVEKIT_DELETE_ROOM_ON_END` (default `true`) - delete the room at teardown so the agent job ends immediately instead of idling out (billing hygiene).
 - `MAX_CALL_MINUTES` / `GOODBYE_TEXT` / `GOODBYE_GRACE_MS` - the bridge-side governor. There is no bridge-side TTS on the room transport: the goodbye is a `teams.goodbye` data message your agent should speak, and the grace covers the unknown duration.
 - Transport hardening knobs: `MAX_CONNECTIONS`, `MAX_CONNECTIONS_PER_IP` (+ `TRUST_PROXY_XFF` behind a proxy), `PRE_START_TIMEOUT_MS`, `WORKER_IDLE_TIMEOUT_MS`, `HMAC_FRESHNESS_MS`.
@@ -112,7 +113,7 @@ See [`.env.example`](./.env.example) (ships with the package). Notable:
 ## Known limitations (v1)
 
 - **Barge-in flush**: interruption handling runs inside the LiveKit agent (as designed), but the room emits no interruption event the bridge could map to the wire protocol's `assistant.cancel` - so up to ~1 s of already-relayed agent audio can play out after the caller cuts in. Acceptable in practice; an agent-published data event could close this later.
-- **Video**: caller video/screenshare frames are not published into the room, and room video (avatar agents) is not bridged to the Teams tile.
+- **Video**: caller video/screenshare frames are not published into the room. Avatar-agent video *can* be bridged to the Teams tile (opt-in, `LIVEKIT_TILE_VIDEO`); it is off by default.
 - **No deterministic goodbye**: the governor's goodbye is spoken by the agent (`teams.goodbye` data topic), not synthesized by the bridge. The bridge flushes Teams-side playback first (`assistant.cancel`), but whether the agent interrupts its own in-flight sentence to speak the goodbye is the agent's choice - if its current turn outlasts `GOODBYE_GRACE_MS`, the goodbye gets cut. Have the `teams.goodbye` handler interrupt the current turn (see the example agents).
 - **Reconnects**: the LiveKit SDK retries transient drops internally (reconnecting/reconnected); `Disconnected` is final and ends the Teams call. There is no bridge-level room re-join beyond that.
 
