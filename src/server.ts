@@ -54,7 +54,10 @@ export class ReplayGuard {
 
   claim(callId: string, ts: number, sig: string, nowMs = Date.now()): boolean {
     for (const [key, expiry] of this.seen) {
-      if (expiry <= nowMs) {
+      // Strict `<`: `isFresh` is inclusive at `ts + windowMs`, so at exactly the
+      // boundary the tuple is still replayable and its record must survive. A
+      // `<=` sweep would evict it one instant early, reopening a 1 ms replay gap.
+      if (expiry < nowMs) {
         this.seen.delete(key);
       }
     }
