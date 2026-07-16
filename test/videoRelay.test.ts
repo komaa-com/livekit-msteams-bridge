@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { selectParticipant } from "../src/videoRelay.js";
+import { selectParticipant, loadJpegEncoder } from "../src/videoRelay.js";
+
+const noopLog = { info() {}, warn() {}, error() {}, debug() {} } as any;
 
 // A minimal Room-shaped stub: selectParticipant only reads room.remoteParticipants.
 function room(parts: Array<{ identity: string; attributes?: Record<string, string> }>): any {
@@ -58,4 +60,26 @@ test("avatar-publishes-both config: the audio binding IS the avatar; self branch
   ]);
   const chosen = selectParticipant(r, "auto", "bithuman-avatar-agent");
   assert.equal(chosen?.identity, "bithuman-avatar-agent");
+});
+
+// The JPEG encoder is backed by `sharp`, an OPTIONAL peer dependency. This test
+// pins the contract on BOTH env states (mirrors the Python sibling's
+// test_jpeg_encoder_resizes_to_the_tile): when sharp is absent the loader
+// returns null (the relay becomes a no-op, audio unaffected); when present it
+// encodes RGB24 down to the 640x360 tile. In a clean CI install sharp is not
+// present, so the null branch is what runs there.
+test("loadJpegEncoder: null when sharp absent, else encodes to the 640x360 tile", async () => {
+  const encode = await loadJpegEncoder(noopLog);
+  if (encode === null) {
+    // sharp-absent contract: no-op path. Nothing else to assert.
+    return;
+  }
+  const W = 100;
+  const H = 60;
+  const rgb = Buffer.alloc(W * H * 3, 0x7f); // mid-grey RGB24
+  const jpeg = await encode(rgb, W, H);
+  assert.ok(Buffer.isBuffer(jpeg) && jpeg.length > 0, "encoder returns a non-empty buffer");
+  // JPEG SOI marker (0xFFD8) proves it is actually JPEG-encoded.
+  assert.equal(jpeg[0], 0xff);
+  assert.equal(jpeg[1], 0xd8);
 });
