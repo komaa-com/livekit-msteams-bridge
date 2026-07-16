@@ -136,3 +136,7 @@ src/
   config.ts      env config (fail-loud numerics)
 test/            node:test suites; a FakeRoom stands in for LiveKit (no network, no native module)
 ```
+
+## License
+
+MIT - see [LICENSE](./LICENSE).
