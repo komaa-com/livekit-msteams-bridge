@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import { sign, verify, isFresh } from "../src/hmac.js";
+import { ReplayGuard } from "../src/server.js";
 
 // Fixed vector: the StandIn media bridge HMAC recipe — HMAC-SHA256(secret, "{timestampMs}.{callId}") hex-lower.
 // Recompute independently here so a refactor of sign() can't silently drift.
@@ -33,4 +34,17 @@ test("isFresh enforces the replay window", () => {
   assert.equal(isFresh(now + 30_000, 60_000, now), true);
   assert.equal(isFresh(now - 61_000, 60_000, now), false);
   assert.equal(isFresh(NaN, 60_000, now), false);
+});
+
+test("BRIDGE-7: ReplayGuard does not evict a tuple still fresh at the window boundary", () => {
+  const window = 60_000;
+  const guard = new ReplayGuard(window);
+  const ts = 1720000000000;
+  // First use at ts is accepted and recorded (expiry = ts + window).
+  assert.equal(guard.claim("call-1", ts, "sig", ts), true);
+  // At exactly ts + window the timestamp is still fresh (isFresh is inclusive),
+  // so a replay must be REJECTED — the record must survive the sweep at the boundary.
+  assert.equal(guard.claim("call-1", ts, "sig", ts + window), false);
+  // One instant past the window the record may be swept (the tuple is unusable anyway).
+  assert.equal(guard.claim("call-1", ts, "sig", ts + window + 1), true);
 });

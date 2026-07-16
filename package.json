@@ -1,6 +1,6 @@
 {
   "name": "@komaa/livekit-msteams-bridge",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "Bridge Microsoft Teams voice calls to a LiveKit Agent. Terminates the StandIn media-bridge wire protocol on one side and joins a LiveKit room (with agent dispatch) on the other.",
   "keywords": [
     "livekit",
