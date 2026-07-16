@@ -66,7 +66,7 @@ Per-call metadata arrives in the job context (`ctx.job.metadata`, JSON):
 Optional: subscribe to the bridge's data topics -
 `teams.context` (participants/DTMF as `{text}`) and `teams.goodbye` (`{text}` the agent should speak before the call is cut).
 
-**Avatar agents** (e.g. the [bitHuman example](https://github.com/livekit/agents/tree/main/examples/avatar_agents/bithuman)): the caller always hears the avatar's synchronized audio. To also show the avatar's face on the Teams tile, set `LIVEKIT_TILE_VIDEO=auto` - the bridge then subscribes to the agent's avatar video and relays it onto the caller's tile. Left off (the default), the tile shows StandIn's own animated avatar (RMS lip-sync).
+**Avatar agents** (e.g. the [bitHuman example](https://github.com/livekit/agents/tree/main/examples/avatar_agents/bithuman)): the caller always hears the avatar's synchronized audio. To also show the avatar's face on the Teams tile, set `LIVEKIT_TILE_VIDEO=auto` - the bridge then subscribes to the agent's avatar video and relays it onto the caller's tile. Left off (the default), the tile shows StandIn's own built-in animated avatar.
 
 ### 2. Run the bridge
 
