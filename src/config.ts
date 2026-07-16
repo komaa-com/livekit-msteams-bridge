@@ -19,9 +19,10 @@ export interface BridgeConfig {
   livekitApiSecret: string;
   /**
    * Relay the agent avatar's video track onto the Teams tile.
-   * "off" (default) | "auto" (the agent participant) | a specific identity.
-   * Opt-in: when set, the bridge subscribes to the agent's avatar video and
-   * streams it to StandIn to paint on the caller's Teams tile.
+   * "auto" (default; the agent participant) | "off" | a specific identity.
+   * By default the bridge relays an avatar agent's video onto the caller's
+   * Teams tile; set "off" to opt out. Voice-only agents are unaffected either
+   * way (they publish no avatar video, so "auto" finds nothing to relay).
    */
   tileVideo: string;
   /** Send rate for the relayed tile stream (frames/s). Default 15. */
@@ -101,7 +102,7 @@ export function loadConfig(): BridgeConfig {
     livekitApiKey: required("LIVEKIT_API_KEY"),
     livekitApiSecret: required("LIVEKIT_API_SECRET"),
     livekitAgentName: optional("LIVEKIT_AGENT_NAME"),
-    tileVideo: process.env.LIVEKIT_TILE_VIDEO?.trim() || "off",
+    tileVideo: process.env.LIVEKIT_TILE_VIDEO?.trim() || "auto",
     tileVideoFps: numFromEnv("LIVEKIT_TILE_VIDEO_FPS", 15),
     livekitRoomPrefix: process.env.LIVEKIT_ROOM_PREFIX?.trim() || "msteams-",
     livekitDeleteRoomOnEnd: process.env.LIVEKIT_DELETE_ROOM_ON_END !== "false",

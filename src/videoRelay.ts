@@ -58,7 +58,7 @@ type JpegEncoder = (rgb: Buffer, width: number, height: number) => Promise<Buffe
  * runtime dependency (ws) for the non-avatar majority; avatar users add sharp.
  * Returns null (with one warn) when it is not installed.
  */
-async function loadJpegEncoder(log: Logger): Promise<JpegEncoder | null> {
+export async function loadJpegEncoder(log: Logger): Promise<JpegEncoder | null> {
   try {
     // Variable specifier so the compiler does not require the optional 'sharp'
     // types/module to be present; it is resolved only at runtime when enabled.
@@ -268,6 +268,17 @@ export async function startVideoRelay(
   // Fixed-rate send ticker: encode the latest slot and push it, honoring the
   // video backpressure budget. Skips a tick when the encode is still running or
   // there is no fresh frame.
+  //
+  // Pacing parity with the Python sibling: both are latest-wins, fps-capped, and
+  // keep at most one encode in flight - but the mechanisms differ deliberately.
+  // Node uses this fixed-interval ticker plus the `encoding` in-flight guard (a
+  // separate drain loop fills the `latest` slot). Python has no separate ticker;
+  // it self-caps inline on `time.monotonic()` inside its single VideoStream loop
+  // (the SDK's capacity=1 ring is its latest-wins slot). Behaviourally equivalent
+  // for the wire contract; under slow encode Node skips ticks while Python spaces
+  // sends by the monotonic gate. Aligning the mechanisms is unnecessary (see
+  // AVATAR-VIDEO-RELAY-PLAN §4.3 parity note); only revisit if a live call shows
+  // the rate-control divergence matters.
   ticker = setInterval(() => {
     if (stopped || latest === null || encoding) return;
     if (!sink.isOpen()) return;
