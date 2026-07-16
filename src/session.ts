@@ -419,9 +419,11 @@ export class CallSession {
     if (this.worker.readyState !== this.worker.OPEN) {
       return;
     }
-    // Backpressure: only the bulky realtime frames are droppable; control
-    // frames (pong, session.end) are tiny and semantically load-bearing.
-    const droppable = msg.type === "audio.frame" || msg.type === "display.image";
+    // Backpressure: only the continuous realtime audio.frame is droppable. Control
+    // frames (pong, session.end) are tiny and load-bearing; and display.image is a
+    // ONE-SHOT the agent is told succeeded, so dropping it would desync the agent's
+    // belief from what the caller sees (BRIDGE-4; latent - v1 never emits it).
+    const droppable = msg.type === "audio.frame";
     if (droppable && this.worker.bufferedAmount > MAX_OUTBOUND_BUFFER_BYTES) {
       this.droppedFrames++;
       metricInc("bridge_frames_dropped_total");
