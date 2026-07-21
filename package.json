@@ -22,7 +22,7 @@
   "bugs": {
     "url": "https://github.com/komaa-com/livekit-msteams-bridge/issues"
   },
-  "homepage": "https://github.com/komaa-com/livekit-msteams-bridge#readme",
+  "homepage": "https://komaa-com.github.io/livekit-msteams-bridge/",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
