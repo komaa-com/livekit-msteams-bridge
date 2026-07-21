@@ -10,6 +10,8 @@
 
 **`@komaa/livekit-msteams-bridge`** puts a [LiveKit Agent](https://docs.livekit.io/agents/) on a real **Microsoft Teams call** - including [avatar agents](https://github.com/livekit/agents/tree/main/examples/avatar_agents) (bitHuman, Tavus, ...) whose voice the caller hears in Teams.
 
+> **Prefer Python?** The same bridge exists as a Python package: [`livekit-msteams-bridge` on PyPI](https://pypi.org/project/livekit-msteams-bridge/) ([repo](https://github.com/komaa-com/livekit-msteams-bridge-py)) - same wire protocol, same environment variables, drop-in interchangeable behind the same `.env` file. The Node and Python packages version independently; both implement the same StandIn wire protocol and interoperate with the hosted service identically.
+
 The hosted **StandIn media bridge** ([standin.komaa.com](https://standin.komaa.com)) joins the Teams call and dials into this bridge over an HMAC-authenticated WebSocket. Per call, the bridge creates one LiveKit room, **dispatches your agent into it** (explicit dispatch by `agentName`), joins as a participant, publishes the caller's audio, and relays the agent's audio back to Teams.
 
 ```text
