@@ -179,12 +179,37 @@ export function startServer(cfg: BridgeConfig, connectRoom: RoomConnector = lazy
 
   const reject = (socket: Duplex, status: string, reason: string, ip: string): void => {
     log.warn(`rejected upgrade from ${ip}: ${reason}`);
-    socket.write(`HTTP/1.1 ${status}\r\n\r\n`);
+    // The peer may already be gone; only write while the socket is alive.
+    if (!socket.destroyed) {
+      socket.write(`HTTP/1.1 ${status}\r\n\r\n`);
+    }
     socket.destroy();
   };
 
   httpServer.on("upgrade", (req, socket, head) => {
+    // A peer can drop the connection at any moment in the window before the
+    // WebSocket exists; give the raw socket an error handler so that stays tidy
+    // (the reject write below also skips sockets that are already gone).
+    socket.on("error", () => {
+      socket.destroy();
+    });
     const ip = remoteKey(req, cfg.trustProxy);
+    // Defense in depth: any throw in this listener is an uncaught exception that
+    // kills the process (everything in processUpgrade is guarded, but never rely
+    // on one guard).
+    try {
+      processUpgrade(req, socket, head, ip);
+    } catch (err) {
+      log.error(`upgrade handler threw: ${(err as Error).message}`);
+      try {
+        socket.destroy();
+      } catch {
+        /* already gone */
+      }
+    }
+  });
+
+  function processUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer, ip: string): void {
     // cheap caps first (before HMAC) so a flood can't force crypto
     if (openConnections >= maxConnections) {
       metricInc("bridge_upgrades_rejected_cap_total");
@@ -250,7 +275,7 @@ export function startServer(cfg: BridgeConfig, connectRoom: RoomConnector = lazy
         releaseSlots();
       });
     });
-  });
+  }
 
   httpServer.on("close", () => liveRegistries.delete(sessions));
 
