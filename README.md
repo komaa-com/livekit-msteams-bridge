@@ -70,6 +70,13 @@ Optional: subscribe to the bridge's data topics -
 
 **Avatar agents** (e.g. the [bitHuman example](https://github.com/livekit/agents/tree/main/examples/avatar_agents/bithuman)): the caller hears the avatar's synchronized audio and, **by default**, sees its face on the Teams tile - the bridge subscribes to the agent's avatar video and relays it onto the caller's tile (`LIVEKIT_TILE_VIDEO=auto`, the default). Set `LIVEKIT_TILE_VIDEO=off` for audio-only relay (the tile then shows StandIn's own animated avatar). Voice-only agents are unaffected either way (they publish no avatar video).
 
+> **The relayed tile needs an outbound video tile on your StandIn connection.** The relay draws onto
+> the tile StandIn publishes into the call, so that tile has to exist: the connection needs its avatar
+> and video enabled. If it is off, the bridge streams perfectly valid frames and they are discarded on
+> arrival - the caller simply sees no video, and the bridge itself has no way to know. If your agent
+> publishes video, `LIVEKIT_TILE_VIDEO` is `auto`, and the caller still sees nothing, check that
+> setting on your StandIn connection first; recent worker builds log a one-time warning naming it.
+
 ### 2. Run the bridge
 
 ```bash
