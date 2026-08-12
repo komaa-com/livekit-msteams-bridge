@@ -17,6 +17,14 @@ const MAX_PENDING_AUDIO_FRAMES = 250;
 
 /** Pending contextual-update cap while the room connects (participants/dtmf). */
 const MAX_PENDING_CONTEXT = 32;
+/**
+ * Floor between speaker-change notices.
+ *
+ * VAD flaps between two people who talk over each other, and every flap would otherwise be a data
+ * packet and a context line the agent has to read. Attribution is useful at conversational pace, not
+ * at VAD pace.
+ */
+const SPEAKER_UPDATE_MIN_INTERVAL_MS = 5_000;
 
 /** Outbound (bridge→worker) send-buffer cap: above it, drop realtime frames. */
 const MAX_OUTBOUND_BUFFER_BYTES = 1 * 1024 * 1024;
@@ -114,6 +122,10 @@ export class CallSession {
   // dead-peer detection (worker heartbeats every 30 s; a half-open socket
   // would otherwise hold the room + the 409 dedup lock for hours)
   private lastWorkerActivityMs = Date.now();
+  /** Humans on the call, from the participants message. Speaker attribution is group-only. */
+  private participantCount = 1;
+  private lastSpeakerName: string | null = null;
+  private lastSpeakerUpdateMs = 0;
   private idleTimer: NodeJS.Timeout | null = null;
 
   private readonly onClosed: (() => void) | undefined;
@@ -178,6 +190,12 @@ export class CallSession {
         );
         break;
       case "audio.frame":
+        // Who is talking. Unmixed meeting audio names its speaker per frame, and the wire type has
+        // carried speakerName all along - nothing read it, so in a meeting the agent heard a single
+        // undifferentiated stream and could not tell who said what. The sibling bridges
+        // (elevenlabs-msteams-bridge, hermes) both consume this; this one declared the field and
+        // dropped it.
+        this.noteSpeaker(msg.speakerName);
         // hot path: caller audio → room. While the room is still connecting,
         // buffer (bounded) so the caller's first words are not lost.
         if (this.room) {
@@ -196,6 +214,7 @@ export class CallSession {
         this.sendToWorker({ type: "pong", ts: msg.ts });
         break;
       case "participants":
+        this.participantCount = msg.count;
         if (msg.count === 1) {
           this.pushContext("This is a 1:1 call with a single human caller.");
         } else if (msg.count > 1) {
@@ -332,6 +351,24 @@ export class CallSession {
       this.governorTimer.unref?.();
       this.log.info(`governor armed: max ${this.cfg.maxCallMinutes} min`);
     }
+  }
+
+  /**
+   * Tell the agent who is speaking now, as ordinary context.
+   *
+   * Group calls only: in a 1:1 there is exactly one other person and naming them every few seconds is
+   * noise, not information. Only on a CHANGE, and rate-limited, so two people talking over each other
+   * cannot spam the agent with alternating notices.
+   */
+  private noteSpeaker(name: string | null | undefined): void {
+    if (!name || this.participantCount <= 1) return;
+    const now = Date.now();
+    if (name === this.lastSpeakerName || now - this.lastSpeakerUpdateMs < SPEAKER_UPDATE_MIN_INTERVAL_MS) {
+      return;
+    }
+    this.lastSpeakerName = name;
+    this.lastSpeakerUpdateMs = now;
+    this.pushContext(`The person now speaking is ${name}.`);
   }
 
   private pushContext(text: string): void {
