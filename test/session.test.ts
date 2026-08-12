@@ -162,6 +162,24 @@ test("full relay: session.start dispatch metadata, audio both ways, ping/pong, c
   // participants + dtmf → room context messages
   ws.send(JSON.stringify({ type: "participants", count: 3 }));
   await until(() => (fakeRoom.contexts.some((t) => t.includes("3 human participants")) ? true : undefined));
+  // Speaker attribution: the wire has always carried speakerName and nothing read it, so in a meeting
+  // the agent heard one undifferentiated stream. Group-only, change-only, rate-limited.
+  const speech = (seq: number, speakerName: string) =>
+    JSON.stringify({
+      type: "audio.frame",
+      seq,
+      timestampMs: seq * 20,
+      payloadBase64: Buffer.alloc(640).toString("base64"),
+      speakerName,
+    });
+  ws.send(speech(90, "Sara"));
+  await until(() => (fakeRoom.contexts.some((t) => t.includes("speaking is Sara")) ? true : undefined));
+  const saraNotices = () => fakeRoom.contexts.filter((t) => t.includes("speaking is Sara")).length;
+  // The same speaker again is not re-announced: VAD flaps between people who talk over each other.
+  ws.send(speech(91, "Sara"));
+  await new Promise((r) => setTimeout(r, 50));
+  assert.equal(saraNotices(), 1);
+
   ws.send(JSON.stringify({ type: "dtmf", digit: "7" }));
   await until(() => (fakeRoom.contexts.some((t) => t.includes('"7"')) ? true : undefined));
 
