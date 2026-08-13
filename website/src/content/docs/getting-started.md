@@ -37,7 +37,7 @@ LIVEKIT_URL=wss://your-project.livekit.cloud \
 LIVEKIT_API_KEY=API... \
 LIVEKIT_API_SECRET=... \
 LIVEKIT_AGENT_NAME=standin-agent \
-WORKER_SHARED_SECRET=... \
+BRIDGE_SECRET=... \
   npx @komaa/livekit-msteams-bridge
 ```
 
@@ -55,17 +55,17 @@ startServer(loadConfig()); // same env variables as the CLI
 
 Every option is an environment variable; the package ships a commented [`.env.example`](https://github.com/komaa-com/livekit-msteams-bridge/blob/main/.env.example), and the [Configuration Reference](/livekit-msteams-bridge/configuration-reference/) documents each one. The bridge listens on `0.0.0.0:8080` by default and exposes `GET /healthz` for liveness.
 
-`WORKER_SHARED_SECRET` comes from StandIn in the next step.
+`BRIDGE_SECRET` comes from StandIn in the next step.
 
 ## 3. Connect a StandIn identity
 
 StandIn is the hosted service that joins the Teams call and dials into your bridge. Pick a tier at [standin.komaa.com](https://standin.komaa.com) (sandbox for an instant trial), pair, and you get a **shared secret**.
 
-1. Put the secret in `WORKER_SHARED_SECRET` (both sides must match exactly).
-2. Point the identity's **agent WebSocket URL** at your bridge, for example `wss://lk-bridge.example.com:8080/voice/msteams/stream`. StandIn appends `/{callId}` per call.
+1. Put the secret in `BRIDGE_SECRET` (both sides must match exactly).
+2. Point the identity's **agent WebSocket URL** at your bridge, for example `wss://lk-bridge.example.com:8080/msteams/calling`. StandIn appends `/{callId}` per call.
 3. Restart the bridge if you changed the env.
 
-StandIn dials in **from the internet**, so a laptop or private host needs a public URL. A tunnel gives you one and terminates TLS (so you get `wss://` for free). Run one pointing at port `8080`, then use the `wss://.../voice/msteams/stream` form of the printed host:
+StandIn dials in **from the internet**, so a laptop or private host needs a public URL. A tunnel gives you one and terminates TLS (so you get `wss://` for free). Run one pointing at port `8080`, then use the `wss://.../msteams/calling` form of the printed host:
 
 Tailscale Funnel:
 

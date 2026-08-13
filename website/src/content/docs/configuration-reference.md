@@ -9,7 +9,7 @@ The bridge is configured entirely through environment variables (`loadConfig()` 
 
 | Variable | Description |
 | --- | --- |
-| `WORKER_SHARED_SECRET` | The shared secret from your StandIn identity (pairing issues it). Must match exactly or the upgrade is rejected with `401`. |
+| `BRIDGE_SECRET` | The shared secret from your StandIn identity (pairing issues it). Must match exactly or the upgrade is rejected with `401`. |
 | `LIVEKIT_URL` | LiveKit server URL - a LiveKit Cloud project (`wss://<project>.livekit.cloud`) or self-hosted. |
 | `LIVEKIT_API_KEY` | LiveKit API key. Mints join tokens, dispatches agents, deletes rooms. Server-side only. |
 | `LIVEKIT_API_SECRET` | LiveKit API secret paired with the key. |
@@ -24,13 +24,41 @@ The bridge is configured entirely through environment variables (`loadConfig()` 
 
 ## Governor
 
-There is no bridge-side TTS on the room transport: the goodbye is a `teams.goodbye` data message your agent speaks. See [Governors and Privacy](/livekit-msteams-bridge/governors-and-privacy/).
+There is no bridge-side TTS on the room transport: the goodbye is a `msteams.goodbye` data message your agent speaks. See [Governors and Privacy](/livekit-msteams-bridge/governors-and-privacy/).
 
 | Variable | Default | Description |
 | --- | --- | --- |
 | `MAX_CALL_MINUTES` | `0` | Bridge-side hard cap on call duration in minutes (fractional allowed). `0` disables it. On limit, the bridge asks the agent to say goodbye, waits the grace, then ends the call. |
-| `GOODBYE_TEXT` | *(a polite default)* | The line sent on `teams.goodbye` at cutoff. |
+| `GOODBYE_TEXT` | *(a polite default)* | The line sent on `msteams.goodbye` at cutoff. |
 | `GOODBYE_GRACE_MS` | `8000` | How long to let the goodbye play before `session.end`. |
+
+## Ambient vision
+
+Relays the caller's screen-share and camera to the agent as discrete labelled images, published as a **byte stream** on the `msteams.vision` topic (read it with `room.register_byte_stream_handler`). Only frames that actually changed are sent, so a frozen screen costs nothing.
+
+**Off by default.** This is the one capability here that spends money - a vision-model call per delivered frame - so it never turns itself on.
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `AMBIENT_VISION` | `false` | Master switch. Off means inbound `video.frame` messages are ignored entirely. |
+| `MAX_VISION_PER_MINUTE` | `30` | Per-call spend cap over a sliding 60-second window. **`0` disables.** The sibling OpenClaw plugin's `maxVisionPerMinute` treats `0` as *unlimited*; that inversion is deliberately not carried over - here the master switch is how you turn the feature on, so `0` reads the way everyone expects. Set a large number for "effectively unlimited". |
+| `REQUIRE_RECORDING_STATUS` | `true` | Hold frames back until Teams reports the call recording as active (Media Access obligation). While it blocks, frames are not even stored, so nothing captured beforehand can surface later. |
+
+Under a tight budget the screen-share wins the last slot ahead of the camera: a shared screen carries far more than a talking head. Each image's stream attributes carry `source`, `owner` (`"Sara's shared screen"`, degrading to `"a shared screen"` when Teams does not name the participant), `caption`, `width`, `height` and `ts`.
+
+## Group-call gate
+
+In a call with 2+ humans the bridge sends the agent a **GROUP-CALL ETIQUETTE** clause on `msteams.context` naming its wake phrases, and deterministically withholds the agent's audio from Teams while it has not been addressed. **A 1:1 call is never gated, whatever these are set to.**
+
+This one is on by default, which does not break the "opt-in by default" rule: it only ever suppresses output, it never adds an API call.
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `GROUP_CALL_REQUIRE_ADDRESS` | `true` | Require the agent to be addressed by name before it may speak in a group call. `false` opts out completely. |
+| `GROUP_CALL_WAKE_PHRASES` | `assistant` | Comma-separated. Matching is case-insensitive and boundary-aware: `assistant` matches `"Assistant, what's this?"` but not `"assistantship"`. An empty value reads as *unset* and falls back to the default - emptying the list is not a way to opt out, because that would be a mute switch. |
+| `GROUP_CALL_FOLLOW_UP_WINDOW_MS` | `12000` | Keep answering for this long after being addressed, without being named again. `0` means "address me every turn" - and because an audio egress has no turn boundary to express that, `0` also disables the deterministic backstop and leaves the etiquette instruction alone. |
+
+The wake phrase is detected from what your agent publishes on LiveKit's own `lk.transcription` topic (enabled by default in `AgentSession`) - the bridge runs no STT. If your agent disables transcription output, the instruction still goes out but the audio backstop stays off, deliberately: a gate whose trigger can never fire must not be allowed to mute the agent for a whole meeting.
 
 ## Server
 
@@ -39,6 +67,7 @@ There is no bridge-side TTS on the room transport: the goodbye is a `teams.goodb
 | `PORT` | `8080` | TCP port for worker WebSocket upgrades (and `/healthz`, `/metrics`). |
 | `BIND` | `0.0.0.0` | Bind address. |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, or `error`. |
+| `STALE_CALL_REAPER_SECONDS` | `120` | End a call whose agent never joined the room (`session.end` reason `no-answer`). `0` disables. Covers the most common setup mistake - `LIVEKIT_AGENT_NAME` not matching the worker's `agent_name` - where the caller would otherwise sit on a silent call that nothing ever ends. Costs nothing to leave on: it makes no provider call, it only frees local resources. |
 
 ## Transport hardening
 

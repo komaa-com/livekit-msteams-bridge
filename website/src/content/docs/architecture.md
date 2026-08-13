@@ -50,7 +50,7 @@ One `CallSession` pairs the worker WebSocket with one `AgentRoomPort`. Caller `a
 
 Robustness details worth knowing:
 
-- **Backpressure** - if the worker send buffer grows past its cap, only bulky realtime frames (`audio.frame`, `display.image`) are dropped; control frames (`session.end`, `pong`) are always delivered.
+- **Backpressure** - if the worker send buffer grows past its cap, only the continuous realtime streams are dropped (`audio.frame`; `display.frame` has its own tighter budget in `videoRelay.ts`); control frames (`session.end`, `pong`, `assistant.cancel`) are always delivered.
 - **Dead-peer detection** - the worker heartbeats every 30 s. If no message arrives for the idle window (default 90 s), the call is ended - a half-open TCP socket can't hold the room and the 409 lock open for hours.
 - **Pre-start timeout** - a client that authenticates but never sends `session.start` is dropped; only a real `session.start` clears the timer (pings do not).
 

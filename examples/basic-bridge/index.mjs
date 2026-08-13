@@ -11,7 +11,7 @@
  * With dummy env values the bridge starts and listens fine; a real Teams call
  * additionally needs a StandIn identity pointed at this server, a LiveKit
  * project, and a running LiveKit agent registered under LIVEKIT_AGENT_NAME
- * (see ../agents for two ready-made agents).
+ * (see ../voice-agent and ../avatar-agent).
  */
 import { loadConfig, startServer } from "@komaa/livekit-msteams-bridge";
 
@@ -25,7 +25,7 @@ const cfg = loadConfig();
 startServer(cfg);
 
 console.log("basic-bridge example is up.");
-console.log(`Point your StandIn identity at wss://<your-tls-front>/voice/msteams/stream (this server listens plain WS on :${cfg.port} - front it with TLS)`);
+console.log(`Point your StandIn identity at wss://<your-tls-front>${cfg.wsPath} (this server listens plain WS on :${cfg.port}${cfg.wsPath} - front it with TLS)`);
 console.log(`Dispatching agent "${cfg.livekitAgentName ?? "<automatic>"}" on ${cfg.livekitUrl}`);
 
 // Graceful shutdown is built in: on SIGINT/SIGTERM every live call is ended

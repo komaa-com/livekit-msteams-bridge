@@ -38,7 +38,28 @@ server.on("error", (err) => {
 - **`CallSession`** - one call: pairs the worker WebSocket with an `AgentRoomPort` and relays audio.
 - **`AgentRoomPort`, `RoomHandlers`, `RoomConnector`** *(types)* - the interface between the session and the room, so you can substitute your own room implementation.
 - **`connectLiveKitRoom(cfg, log, callId, metadata, handlers)`** - the real LiveKit connector (join, dispatch, publish/subscribe).
-- **`TOPIC_CONTEXT` (`"teams.context"`), `TOPIC_GOODBYE` (`"teams.goodbye"`)** - the data topics the agent listens on.
+- **`TOPIC_CONTEXT` (`"msteams.context"`), `TOPIC_GOODBYE` (`"msteams.goodbye"`), `TOPIC_VISION` (`"msteams.vision"`)** - the topics the agent listens on. `TOPIC_TRANSCRIPTION` (`"lk.transcription"`) is LiveKit's own topic, which the bridge *reads* for the group-call gate.
+
+### Group-call gate
+
+Pure policy, no I/O - safe to reuse anywhere.
+
+- **`resolveGroupCallGateConfig(partial)`**, **`GROUP_CALL_GATE_DEFAULTS`** - the single place defaults are applied.
+- **`isAddressed(transcript, wakePhrases)`** - case-insensitive, boundary-aware wake-phrase match.
+- **`isFollowUpWindowOpen({ lastAddressedAt, followUpWindowMs, now })`** - the follow-up window (a time window, never a latch).
+- **`isGroupGateActive(config, isGroup)`**, **`hasUsableWakePhrase(phrases)`**, **`groupCallEtiquetteClause(config)`**.
+
+### Ambient vision
+
+- **`AmbientVision`** - the per-call frame store, change latch, spend budget and fallback queue. Constructed with `mediaPermitted` / `sinkReady` / `deliver` callbacks, so it is testable without a room.
+- **`VisionBudget`** - the sliding 60-second per-call cap (`tryConsume` / `refund` / `release`), clock injected.
+- **`resolveAmbientVisionConfig(partial)`**, **`AMBIENT_VISION_DEFAULTS`**, **`describeFrameOwner(frame)`**, **`visionSourceOf(raw)`**, **`VisionImage`** *(type)*.
+
+### Call lifecycle
+
+- **`CallReaper`** - polls a live-call registry and ends calls whose agent never answered. `reapStale()` is public, so it can be driven directly in a test.
+- **`isUnanswered(call, staleCallReaperMs, now)`** - the whole decision as a pure predicate.
+- **`ReapableCall`** *(type)* - what the reaper needs from a call (`startedAtMs`, `answeredAtMs`, `shutdown`).
 
 ### HMAC
 

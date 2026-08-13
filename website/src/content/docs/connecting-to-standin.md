@@ -7,19 +7,19 @@ description: What StandIn is, how pairing issues the shared secret, the agent We
 
 ## Pairing and the shared secret
 
-Pick a tier and pair an identity in the StandIn portal. Pairing issues a **shared secret**. That exact string goes in `WORKER_SHARED_SECRET` on the bridge. Both sides sign and verify with it; a mismatch is rejected at the upgrade with `401`.
+Pick a tier and pair an identity in the StandIn portal. Pairing issues a **shared secret**. That exact string goes in `BRIDGE_SECRET` on the bridge. Both sides sign and verify with it; a mismatch is rejected at the upgrade with `401`.
 
 Keep the secret out of your shell history and images - pass it through your secret manager or an env file the process reads at start.
 
 ## The agent WebSocket URL
 
-In the identity's settings, set the **agent WebSocket URL** to your bridge, using the `wss://.../voice/msteams/stream` path:
+In the identity's settings, set the **agent WebSocket URL** to your bridge, using the `wss://.../msteams/calling` path:
 
 ```text
-wss://lk-bridge.example.com:8080/voice/msteams/stream
+wss://lk-bridge.example.com:8080/msteams/calling
 ```
 
-StandIn appends `/{callId}` per call, so the bridge receives `/voice/msteams/stream/{callId}`. The bridge takes the last path segment as the `callId` and binds the whole call to it (the HMAC is computed over that `callId`, so it cannot be tampered with).
+StandIn appends `/{callId}` per call, so the bridge receives `/msteams/calling/{callId}`. The bridge takes the last path segment as the `callId` and binds the whole call to it (the HMAC is computed over that `callId`, so it cannot be tampered with).
 
 ## TLS
 

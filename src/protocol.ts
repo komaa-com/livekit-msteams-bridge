@@ -81,20 +81,23 @@ export interface AssistantCancelMessage {
   turnId: number;
 }
 
-export interface ExpressionMessage {
-  type: "expression";
-  emotion: string;
-}
-
-export interface DisplayImageMessage {
-  type: "display.image";
-  dataBase64: string;
-  mime: string;
-  durationMs?: number | null;
-  mode?: string | null;
-  ts?: number;
-  caption?: string | null;
-}
+/**
+ * DELIBERATELY NOT DECLARED: `expression` (avatar emotion cues) and `display.image` (put one still
+ * picture on the bot's own Teams tile).
+ *
+ * Both are real messages the StandIn worker accepts, and the plugin-shaped sibling bridges emit
+ * them. This one cannot, and the blocker is structural rather than missing work: emitting either
+ * requires the AGENT to ask for it, and this transport has no agent-to-bridge command lane. The room
+ * subscription in livekit.ts registers track events and a single text-stream reader for caller
+ * transcripts; nothing carries a command back from the agent. Adding one means defining a new
+ * inbound contract - a data topic the bridge subscribes to - that every deployed LiveKit agent would
+ * have to adopt. That is a protocol change, not a port, so it is out of scope here.
+ *
+ * They are absent rather than declared-and-unused on purpose. A member of WorkerOutbound reads as a
+ * capability: it is what an SDK consumer sees and what the wire-protocol docs get written from, so a
+ * type with no producer is an advertisement for a feature that does not exist.
+ * test/wiredNotOrphaned.test.ts enforces that every member of the union has a construction site.
+ */
 
 /**
  * Bridge -> worker (experimental). One frame of a continuous avatar-video
@@ -131,8 +134,6 @@ export type WorkerOutbound =
   | AssistantCancelMessage
   | PongMessage
   | SessionEndMessage
-  | ExpressionMessage
-  | DisplayImageMessage
   | DisplayFrameMessage;
 
 /** Parse a worker frame; returns null on junk rather than throwing (drop + log at call site). */
