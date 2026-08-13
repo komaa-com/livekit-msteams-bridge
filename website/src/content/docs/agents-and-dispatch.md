@@ -1,6 +1,6 @@
 ---
 title: Agents and Dispatch
-description: How the bridge dispatches your LiveKit agent, the per-call metadata it passes, the teams.context and teams.goodbye data topics, and avatar agents.
+description: How the bridge dispatches your LiveKit agent, the per-call metadata it passes, the msteams.context and msteams.goodbye data topics, and avatar agents.
 ---
 
 The bridge is agnostic about what your agent does - any LiveKit agent (Python or Node, any STT/LLM/TTS/realtime stack) works unchanged. There are only three integration points: how it is **dispatched**, the **metadata** it receives, and two **data topics** it can listen on.
@@ -48,25 +48,45 @@ async def entrypoint(ctx: JobContext):
 
 ## Data topics
 
-The bridge publishes two reliable data topics into the room. Subscribe to them if your agent should react to call context or the governor.
+The bridge publishes into the room on three topics. Subscribe to them if your agent should react to call context, the governor, or what the caller is showing on screen.
 
-### `teams.context`
+### `msteams.context`
 
 Non-interrupting context about the call, as `{ "text": "..." }`:
 
-- Participant count changes - `"This is a 1:1 call with a single human caller."` or `"There are N human participants on this call. Stay quiet unless directly addressed."`
+- Participant count changes - `"This is a 1:1 call with a single human caller."` or, in a meeting, the roster line plus the **GROUP-CALL ETIQUETTE** clause naming the agent's wake phrases (see [Configuration Reference](/livekit-msteams-bridge/configuration-reference/)).
+- Speaker changes in a meeting - `"The person now speaking is Sara."`
 - DTMF - `"The caller pressed the \"5\" key on their keypad."`
+- Recording state changes.
 
-Feed these into your agent as system/context messages so it can adapt (for example, stay quiet in a group call until addressed).
+Feed these into your agent as system/context messages so it can adapt. The etiquette clause is the *primary* mechanism of the group-call gate - the agent owns turn-taking on this transport, so an agent that reads and honours the clause is what produces good meeting behaviour. The bridge's audio-egress check behind it is a deterministic backstop, not a substitute.
 
-### `teams.goodbye`
+### `msteams.vision` (opt-in)
+
+With `AMBIENT_VISION=true`, each changed screen-share or camera frame arrives as a **byte stream** (not a data packet - an image does not fit in one). The image bytes are exactly what Teams sent; the attribution rides in the stream attributes, so a handler never has to look at the picture to know whose screen it is.
+
+```python
+def on_vision(reader, participant):
+    async def read():
+        image = b"".join([chunk async for chunk in reader])
+        attrs = reader.info.attributes  # source, owner, caption, width, height, ts
+        # e.g. attrs["owner"] == "Sara's shared screen", reader.info.mime_type == "image/jpeg"
+        ...
+    asyncio.create_task(read())
+
+ctx.room.register_byte_stream_handler("msteams.vision", on_vision)
+```
+
+Nothing about this makes the agent speak: a delivered frame is context for its next natural turn.
+
+### `msteams.goodbye`
 
 The governor's goodbye line, as `{ "text": "..." }`. When a call hits its time limit, the bridge asks the agent to speak this text, waits `GOODBYE_GRACE_MS`, then ends the call. There is **no bridge-side TTS** on the room transport - the agent speaks the goodbye. Have your handler interrupt the current turn so the goodbye actually plays:
 
 ```python
 @ctx.room.on("data_received")
 def on_data(packet):
-    if packet.topic == "teams.goodbye":
+    if packet.topic == "msteams.goodbye":
         text = json.loads(packet.data)["text"]
         session.interrupt()               # stop the current turn
         session.say(text, allow_interruptions=False)

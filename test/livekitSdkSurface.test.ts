@@ -19,9 +19,11 @@ import {
   AudioSource,
   AudioStream,
   LocalAudioTrack,
+  LocalParticipant,
   Room,
   RoomEvent,
   TrackKind,
+  TrackPublication,
   TrackPublishOptions,
   TrackSource,
 } from "@livekit/rtc-node";
@@ -81,4 +83,20 @@ test("audio surface: the exact shape the Teams->LiveKit leg builds", () => {
   assert.equal(typeof AudioSource.prototype.captureFrame, "function", "AudioSource.captureFrame must exist");
   assert.equal(typeof LocalAudioTrack.createAudioTrack, "function", "LocalAudioTrack.createAudioTrack must exist");
   assert.equal(typeof AudioStream, "function", "AudioStream must exist (LiveKit -> Teams leg)");
+});
+
+test("data-stream surface: how ambient vision ships an image and the gate reads a transcript", () => {
+  // Ambient vision publishes the image as a byte STREAM, not a data packet: a screen-share JPEG is
+  // far larger than a data packet may be, and streamBytes chunks it. A rename here would leave a
+  // feature that collects frames and silently delivers none.
+  assert.equal(typeof LocalParticipant.prototype.streamBytes, "function", "LocalParticipant.streamBytes must exist");
+
+  // The group-call gate has no STT of its own; its only transcript source is LiveKit's own
+  // transcription topic, read through this handler registration.
+  assert.equal(typeof Room.prototype.registerTextStreamHandler, "function", "Room.registerTextStreamHandler must exist");
+  assert.equal(typeof Room.prototype.unregisterTextStreamHandler, "function", "Room.unregisterTextStreamHandler must exist");
+
+  // A transcript is recognised as the CALLER's by the sid of the track this bridge publishes, so
+  // publishTrack has to hand back a publication that exposes one.
+  assert.ok("sid" in TrackPublication.prototype, "TrackPublication.sid must exist (caller-track identification)");
 });

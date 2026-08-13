@@ -19,6 +19,9 @@ const META: Record<string, { help: string; type: "counter" | "gauge" }> = {
   bridge_video_frames_sent_total: { help: "Avatar video frames relayed to the worker (display.frame)", type: "counter" },
   bridge_video_frames_dropped_total: { help: "Avatar video frames skipped under the video backpressure budget", type: "counter" },
   bridge_room_connect_failures_total: { help: "LiveKit room connect/dispatch failures", type: "counter" },
+  bridge_vision_frames_sent_total: { help: "Ambient-vision images delivered to the agent (msteams.vision)", type: "counter" },
+  bridge_agent_frames_gated_total: { help: "Agent audio frames withheld by the group-call gate", type: "counter" },
+  bridge_calls_no_answer_total: { help: "Calls ended because the agent never joined the room", type: "counter" },
 };
 
 export function metricInc(name: keyof typeof META, by = 1): void {

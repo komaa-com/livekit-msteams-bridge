@@ -4,6 +4,7 @@ import { WebSocketServer } from "ws";
 import type { BridgeConfig } from "./config.js";
 import { isFresh, verify, LEGACY_SIGNATURE_HEADER, LEGACY_TIMESTAMP_HEADER, SIGNATURE_HEADER, TIMESTAMP_HEADER } from "./hmac.js";
 import { logger } from "./log.js";
+import { CallReaper } from "./callLifecycle.js";
 import { CallSession, type RoomConnector } from "./session.js";
 import { metricDec, metricInc, renderMetrics } from "./metrics.js";
 
@@ -27,21 +28,39 @@ const DEFAULT_PRE_START_TIMEOUT_MS = 10_000;
 // exists to avoid.
 const SHUTDOWN_GRACE_MS = 2_500;
 
-/** callId = last non-empty path segment of the upgrade URL. */
-export function callIdFromUrl(url: string | undefined): string | null {
+/** Mirrors config.ts. Duplicated deliberately: server.ts must not import config for one constant. */
+const DEFAULT_WS_PATH = "/msteams/calling";
+
+/**
+ * callId = the single segment directly under `basePath`, i.e. `{basePath}/{callId}`.
+ *
+ * `basePath` is REQUIRED. Previously any path worked because only the last segment was read, so the
+ * bridge answered on every route - including ones a co-hosted service will want later. Anchoring on
+ * the base path means an unrelated URL is rejected before authentication rather than treated as a
+ * call whose id happens to be that URL's last segment.
+ */
+export function callIdFromUrl(url: string | undefined, basePath: string): string | null {
   if (!url) {
     return null;
   }
   const path = url.split("?")[0];
-  const segments = path.split("/").filter(Boolean);
-  if (segments.length === 0) {
+  // Defensive: this runs in the pre-auth "upgrade" listener, where an exception destroys the socket
+  // with no response - the same failure the percent-escape guard below exists for. A config that
+  // somehow lacks wsPath must degrade to the default, not take the connection down silently.
+  const base = (basePath || DEFAULT_WS_PATH).replace(/\/+$/, "");
+  if (path !== base && !path.startsWith(`${base}/`)) {
+    return null;
+  }
+  const segments = path.slice(base.length).split("/").filter(Boolean);
+  // Exactly one segment under the base: {base}/{callId}. Deeper paths are not ours.
+  if (segments.length !== 1) {
     return null;
   }
   try {
     // A malformed percent-escape (%zz) makes decodeURIComponent throw URIError
     // inside the pre-auth "upgrade" listener - an unguarded throw would be an
     // unauthenticated remote process crash. Treat it as no callId.
-    return decodeURIComponent(segments[segments.length - 1]);
+    return decodeURIComponent(segments[0]);
   } catch {
     return null;
   }
@@ -79,11 +98,11 @@ export function authorizeUpgrade(
   req: IncomingMessage,
   replay?: ReplayGuard,
 ): { callId: string } | { error: string } {
-  const callId = callIdFromUrl(req.url);
+  const callId = callIdFromUrl(req.url, cfg.wsPath);
   if (!callId) {
-    return { error: "no callId in path" };
+    return { error: `expected ${cfg.wsPath}/{callId}` };
   }
-  if (!cfg.workerSharedSecret) {
+  if (!cfg.bridgeSecret) {
     return { error: "bridge shared secret is not configured" }; // fail closed
   }
   const tsHeader = req.headers[TIMESTAMP_HEADER] ?? req.headers[LEGACY_TIMESTAMP_HEADER];
@@ -93,7 +112,7 @@ export function authorizeUpgrade(
   if (!isFresh(ts, cfg.hmacFreshnessMs)) {
     return { error: "stale or missing timestamp" };
   }
-  if (!verify(cfg.workerSharedSecret, ts, callId, sig)) {
+  if (!verify(cfg.bridgeSecret, ts, callId, sig)) {
     return { error: "bad signature" };
   }
   if (replay && !replay.claim(callId, ts, sig)) {
@@ -157,6 +176,20 @@ export function startServer(cfg: BridgeConfig, connectRoom: RoomConnector = lazy
   const sessions = new Map<string, CallSession>();
   liveRegistries.add(sessions);
   wireDrainSignals();
+
+  // No-answer fallback: end calls whose LiveKit agent never joined. Nothing else covers this - the
+  // pre-start timer only watches for session.start, and the dead-peer timer is satisfied by the
+  // worker's heartbeats, so a dispatch that never lands leaves a live, silent call forever.
+  const reaper = new CallReaper({
+    staleCallReaperMs: cfg.staleCallReaperSeconds * 1000,
+    calls: () => sessions.entries(),
+    onReap: (callId, reason) => {
+      metricInc("bridge_calls_no_answer_total");
+      log.info(`call ${callId.slice(0, 12)}… reaped: ${reason}`);
+    },
+    log,
+  });
+  reaper.start();
 
   const onRequest = (req: IncomingMessage, res: import("node:http").ServerResponse): void => {
     if (req.url === "/healthz") {
@@ -277,7 +310,10 @@ export function startServer(cfg: BridgeConfig, connectRoom: RoomConnector = lazy
     });
   }
 
-  httpServer.on("close", () => liveRegistries.delete(sessions));
+  httpServer.on("close", () => {
+    reaper.stop();
+    liveRegistries.delete(sessions);
+  });
 
   httpServer.listen(cfg.port, cfg.host, () => {
     log.info(`livekit-msteams-bridge listening on ${cfg.host}:${cfg.port} (LiveKit ${cfg.livekitUrl}, agent ${cfg.livekitAgentName ?? "<automatic dispatch>"})`);

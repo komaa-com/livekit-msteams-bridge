@@ -11,10 +11,10 @@ After a successful [HMAC handshake](/livekit-msteams-bridge/connecting-to-standi
 | --- | --- |
 | `session.start` | First message of a call. Carries `callId`, `threadId`, `caller` (`aadId`/`displayName`/`tenantId`, all nullable), `recordingStatus`, `direction`. The bridge connects the room and dispatches the agent. |
 | `audio.frame` | Caller audio. `seq`, `timestampMs`, `payloadBase64` (PCM16K), optional `speakerName`. Published to the room. |
-| `participants` | `count` of human participants. Forwarded to the agent on `teams.context`. |
-| `dtmf` | A keypad `digit`. Forwarded to the agent on `teams.context`. |
-| `recording.status` | Recording `status` change. Logged (nothing is persisted by this bridge). |
-| `video.frame` | Caller camera/screenshare frame. Ignored in v1 (no room video publish). |
+| `participants` | `count` of human participants. Forwarded to the agent on `msteams.context`. |
+| `dtmf` | A keypad `digit`. Forwarded to the agent on `msteams.context`. |
+| `recording.status` | Recording `status` change. Surfaced to the agent on `msteams.context`, and it opens the ambient-vision media gate (nothing is persisted by this bridge). |
+| `video.frame` | Caller camera/screenshare frame. Ignored unless `AMBIENT_VISION=true`, in which case the newest *changed* frame per source is published to the agent as a labelled image on `msteams.vision`. Never published as a room video track. |
 | `ping` | Heartbeat (every ~30 s). The bridge replies `pong`; also drives dead-peer detection. |
 | `assistant.say` | Worker-side request for the agent to speak a line (funnels through the goodbye path). |
 | `session.end` | The call is over (`reason`). The bridge tears down and deletes the room. |
@@ -27,12 +27,14 @@ After a successful [HMAC handshake](/livekit-msteams-bridge/connecting-to-standi
 | `pong` | Reply to `ping`. |
 | `session.end` | The bridge is ending the call (`reason`) - governor cutoff, dead-peer, agent gone, or drain. |
 | `assistant.cancel` | Flush Teams-side playback (barge-in / before a goodbye). |
-| `expression`, `display.image` | Optional avatar-expression and image-display hints (bulky `display.image` is droppable under backpressure; control frames are not). |
+| `display.frame` | One frame of the avatar-video stream for the bot's Teams tile (JPEG, base64). Sent only when the agent publishes avatar video and `LIVEKIT_TILE_VIDEO` is not `off` (default `auto`). Latest-wins: frames are dropped, never queued, under backpressure. |
+
+The StandIn worker also accepts `expression` (avatar emotion cues) and `display.image` (one still picture on the bot's tile). **This bridge never sends either**, and they are not in its `WorkerOutbound` type. Both need the agent to ask for them, and this transport has no agent-to-bridge command lane: the bridge subscribes to room track events and to caller transcripts, and nothing carries a command back the other way. Supporting them means defining a new inbound contract that every deployed LiveKit agent would have to adopt - a protocol change rather than a bridge change. The plugin-shaped siblings, which run inside an agent host, do emit them.
 
 ## Framing and backpressure
 
 - **Ordering** - `audio.frame`s carry a monotonic `seq` and a `timestampMs` derived from cumulative PCM duration, so the receiver can order and pace playback.
-- **Backpressure** - if the worker's receive buffer backs up, the bridge drops only bulky realtime frames (`audio.frame`, `display.image`) and always delivers control frames (`session.end`, `pong`, `assistant.cancel`).
+- **Backpressure** - if the worker's receive buffer backs up, the bridge drops only the continuous realtime streams (`audio.frame`, and `display.frame` against its own tighter video budget) and always delivers control frames (`session.end`, `pong`, `assistant.cancel`).
 - **Parsing** - a frame that isn't valid JSON with a string `type` is dropped and logged, never thrown - a malformed frame can't crash a call.
 
 ## Helpers

@@ -17,6 +17,7 @@ import {
 import type { BridgeConfig } from "./config.js";
 import type { Logger } from "./log.js";
 import type { AgentRoomPort, RoomHandlers } from "./session.js";
+import type { VisionImage } from "./vision.js";
 import { startVideoRelay, type TileSink } from "./videoRelay.js";
 
 /**
@@ -37,8 +38,24 @@ const SAMPLE_RATE = 16_000;
 const NUM_CHANNELS = 1;
 
 /** Data topics the agent can listen on (documented in the README). */
-export const TOPIC_CONTEXT = "teams.context";
-export const TOPIC_GOODBYE = "teams.goodbye";
+export const TOPIC_CONTEXT = "msteams.context";
+export const TOPIC_GOODBYE = "msteams.goodbye";
+/**
+ * Ambient vision images. A byte STREAM, not a data packet: a screen-share JPEG is far larger than a
+ * LiveKit data packet may be, and streamBytes chunks it for us. Agents read it with
+ * `room.register_byte_stream_handler("msteams.vision", ...)`; the attribution rides in the stream's
+ * attributes so a handler never has to parse the image to know whose screen it is.
+ */
+export const TOPIC_VISION = "msteams.vision";
+
+/**
+ * LiveKit's own transcription topic. AgentSession publishes both sides' transcripts here by default
+ * (RoomOutputOptions.transcription_enabled), which is the ONLY transcript this bridge can see - it
+ * runs no STT of its own. The group-call gate uses it to detect its wake phrase.
+ */
+export const TOPIC_TRANSCRIPTION = "lk.transcription";
+/** Stream attribute naming the audio track a transcript belongs to. */
+const TRANSCRIBED_TRACK_ID_ATTR = "lk.transcribed_track_id";
 
 export async function connectLiveKitRoom(
   cfg: BridgeConfig,
@@ -79,7 +96,10 @@ export async function connectLiveKitRoom(
 
   const source = new AudioSource(SAMPLE_RATE, NUM_CHANNELS);
   const track = LocalAudioTrack.createAudioTrack("teams-caller", source);
-  await local.publishTrack(
+  // Keep the publication: its sid identifies the caller's audio track, which is how a transcript on
+  // lk.transcription is recognised as the CALLER's rather than the agent's own speech. Read through
+  // the object (never cached) because the SDK re-issues the sid in place after a full reconnect.
+  const callerPub = await local.publishTrack(
     track,
     new TrackPublishOptions({ source: TrackSource.SOURCE_MICROPHONE }),
   );
@@ -148,6 +168,40 @@ export async function connectLiveKitRoom(
   // (reconnecting/reconnected) before this fires.
   room.on(RoomEvent.Disconnected, () => handlers.onClosed("room disconnected"));
 
+  // Caller transcripts, for the group-call gate's wake-phrase detection. Best-effort by design: an
+  // agent with transcription output disabled publishes nothing here, and the gate then falls back to
+  // the etiquette instruction alone rather than muting the agent (see CallSession.egressGateActive).
+  try {
+    room.registerTextStreamHandler(TOPIC_TRANSCRIPTION, (reader, participant) => {
+      // Both sides' transcripts arrive on this topic, and the agent saying its OWN name must never
+      // wake the gate. Prefer the transcribed track id (unambiguous: it is the track this bridge
+      // publishes), and fall back to "not the agent's identity" when the attribute is absent.
+      const trackId = reader.info.attributes?.[TRANSCRIBED_TRACK_ID_ATTR];
+      const isCaller = trackId ? trackId === callerPub.sid : participant.identity !== agentIdentity;
+      if (!isCaller) {
+        return;
+      }
+      void (async () => {
+        try {
+          // The reader yields the transcript SO FAR, growing as the turn finalises. Feeding every
+          // yield in is what makes a wake phrase that only ever appears in a partial still count.
+          for await (const soFar of reader) {
+            if (closed) {
+              break;
+            }
+            handlers.onCallerTranscript(soFar);
+          }
+        } catch (err) {
+          log.debug(`caller transcript stream ended: ${(err as Error).message}`);
+        }
+      })();
+    });
+  } catch (err) {
+    log.warn(
+      `could not subscribe to caller transcripts (${(err as Error).message}); the group-call gate falls back to the etiquette instruction alone`,
+    );
+  }
+
   const encoder = new TextEncoder();
 
   return {
@@ -173,6 +227,36 @@ export async function connectLiveKitRoom(
       void local
         .publishData(encoder.encode(JSON.stringify({ text })), { reliable: true, topic: TOPIC_GOODBYE })
         .catch((err: Error) => log.warn(`goodbye publish failed: ${err.message}`));
+    },
+    async sendVision(image: VisionImage): Promise<void> {
+      if (closed) {
+        throw new Error("room is closed");
+      }
+      // The image rides as bytes, not base64-in-JSON: a data packet is capped well below a
+      // screen-share frame, and streamBytes chunks the payload for us. Rejecting (rather than
+      // swallowing) a failure is load-bearing - it is what refunds the per-call vision budget.
+      const bytes = Buffer.from(image.dataBase64, "base64");
+      const writer = await local.streamBytes({
+        topic: TOPIC_VISION,
+        name: `${image.source}-${image.ts}`,
+        mimeType: image.mime,
+        totalSize: bytes.byteLength,
+        attributes: {
+          source: image.source,
+          owner: image.owner,
+          caption: image.caption,
+          width: String(image.width),
+          height: String(image.height),
+          ts: String(image.ts),
+        },
+      });
+      try {
+        await writer.write(new Uint8Array(bytes));
+      } catch (err) {
+        await writer.close().catch(() => {});
+        throw err;
+      }
+      await writer.close();
     },
     async startAvatarRelay(sink: TileSink): Promise<() => void> {
       // The relay reads the agent identity captured on first audio subscribe

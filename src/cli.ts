@@ -19,6 +19,6 @@ try {
   });
 } catch (err) {
   console.error(`livekit-msteams-bridge: ${(err as Error).message}`);
-  console.error("Required env: LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET, WORKER_SHARED_SECRET (see .env.example).");
+  console.error("Required env: LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET, BRIDGE_SECRET (see .env.example).");
   process.exit(1);
 }

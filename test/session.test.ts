@@ -8,11 +8,15 @@ import { sign } from "../src/hmac.js";
 import type { BridgeConfig } from "../src/config.js";
 import type { AgentRoomPort, RoomHandlers, RoomConnector } from "../src/session.js";
 import type { TileSink } from "../src/videoRelay.js";
+import type { VisionImage } from "../src/vision.js";
+import { resolveGroupCallGateConfig } from "../src/groupGate.js";
+import { resolveAmbientVisionConfig } from "../src/vision.js";
 
 const cfg: BridgeConfig = {
   port: 0,
+  wsPath: "/msteams/calling",
   host: "127.0.0.1",
-  workerSharedSecret: "test-secret",
+  bridgeSecret: "test-secret",
   livekitUrl: "wss://unused.livekit.cloud",
   livekitApiKey: "unused",
   livekitApiSecret: "unused",
@@ -30,6 +34,9 @@ const cfg: BridgeConfig = {
   trustProxy: false,
   tileVideo: "off",
   tileVideoFps: 10,
+  staleCallReaperSeconds: 0,
+  groupCall: resolveGroupCallGateConfig(undefined),
+  ambientVision: resolveAmbientVisionConfig(undefined),
 };
 
 /** Fake LiveKit room: records what the bridge publishes, lets tests push agent audio back. */
@@ -41,6 +48,15 @@ class FakeRoom implements AgentRoomPort {
   closed = false;
   handlers!: RoomHandlers;
   metadata: Record<string, string> = {};
+  /** Ambient-vision images the bridge handed to the agent, in order. */
+  visions: VisionImage[] = [];
+  /** When set, sendVision rejects - the path that must refund the vision budget. */
+  visionShouldFail = false;
+
+  async sendVision(image: VisionImage): Promise<void> {
+    if (this.visionShouldFail) throw new Error("vision sink failed");
+    this.visions.push(image);
+  }
 
   async publishCallerAudio(b64: string): Promise<void> {
     this.published.push(b64);
@@ -85,12 +101,12 @@ after(() => server.close());
 
 function workerHeaders(callId: string, opts?: { badSig?: boolean; staleTs?: boolean }): Record<string, string> {
   const ts = opts?.staleTs ? Date.now() - 3_600_000 : Date.now();
-  const sig = opts?.badSig ? "0".repeat(64) : sign(cfg.workerSharedSecret, ts, callId);
+  const sig = opts?.badSig ? "0".repeat(64) : sign(cfg.bridgeSecret, ts, callId);
   return { "X-OpenClawTeamsBridge-Timestamp": String(ts), "X-OpenClawTeamsBridge-Signature": sig };
 }
 
 function connectWorker(p: number, callId: string): Promise<WebSocket> {
-  const ws = new WebSocket(`ws://127.0.0.1:${p}/voice/msteams/stream/${callId}`, { headers: workerHeaders(callId) });
+  const ws = new WebSocket(`ws://127.0.0.1:${p}/msteams/calling/${callId}`, { headers: workerHeaders(callId) });
   return new Promise((resolve, reject) => {
     ws.once("open", () => resolve(ws));
     ws.once("error", reject);
@@ -379,5 +395,71 @@ test("upgrade: abrupt peer disconnect during reject is tolerated; server stays l
     }, 1500);
   });
   assert.match(reply, /401/);
+  srv.close();
+});
+
+// ── ambient vision ──────────────────────────────────────────────────────────────────────────────
+// Restored after a bad `git checkout` wiped this file's vision coverage. These pin the three things
+// that actually decide whether the agent can see anything: the default, the media gate, and the
+// ordering race that closed that gate on a live call.
+
+function visionCfg(): BridgeConfig {
+  return { ...cfg, ambientVision: resolveAmbientVisionConfig({ enabled: true }) };
+}
+
+function videoFrame(source = "screenshare") {
+  return JSON.stringify({
+    type: "video.frame",
+    source,
+    ts: 1,
+    width: 8,
+    height: 8,
+    mime: "image/jpeg",
+    dataBase64: Buffer.alloc(32, 1).toString("base64"),
+  });
+}
+
+test("ambient vision is OFF by default: inbound video never reaches the agent", async () => {
+  const room = new FakeRoom();
+  const srv = startServer(cfg, makeConnector(room));
+  await new Promise<void>((r) => srv.once("listening", () => r()));
+  const p = (srv.address() as AddressInfo).port;
+  const ws = await connectWorker(p, "call-vis-off");
+  ws.send(JSON.stringify({ type: "recording.status", status: "active" }));
+  ws.send(JSON.stringify({ type: "session.start", callId: "call-vis-off", threadId: "t", caller: {} }));
+  await until(() => (room.handlers ? true : undefined));
+  ws.send(videoFrame());
+  await new Promise((r) => setTimeout(r, 120));
+  assert.equal(room.visions.length, 0, "a frame must cost nothing when the feature is off");
+  ws.close();
+  srv.close();
+});
+
+test("recording.status BEFORE session.start is not downgraded by its stale snapshot", async () => {
+  // The ordering that silently disabled vision on a live call: both messages landed in the same
+  // millisecond and session.start won. Its recordingStatus is a setup-time snapshot ("unknown"), so
+  // it flipped recordingActive back to false and closed the media gate for the whole call. Vision
+  // then refused every frame WITHOUT logging - refusing is correct when recording is off - so the
+  // agent answered screen-share questions from nothing and it read as hallucination.
+  const room = new FakeRoom();
+  const srv = startServer(visionCfg(), makeConnector(room));
+  await new Promise<void>((r) => srv.once("listening", () => r()));
+  const p = (srv.address() as AddressInfo).port;
+  const ws = await connectWorker(p, "call-vis-race");
+
+  ws.send(JSON.stringify({ type: "recording.status", status: "active" }));
+  ws.send(JSON.stringify({
+    type: "session.start",
+    callId: "call-vis-race",
+    threadId: "t",
+    caller: {},
+    recordingStatus: "unknown",
+  }));
+  await until(() => (room.handlers ? true : undefined));
+
+  ws.send(videoFrame());
+  await until(() => (room.visions.length > 0 ? true : undefined));
+  assert.equal(room.visions[0]?.source, "screenshare");
+  ws.close();
   srv.close();
 });
