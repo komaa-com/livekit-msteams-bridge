@@ -102,7 +102,7 @@ after(() => server.close());
 function workerHeaders(callId: string, opts?: { badSig?: boolean; staleTs?: boolean }): Record<string, string> {
   const ts = opts?.staleTs ? Date.now() - 3_600_000 : Date.now();
   const sig = opts?.badSig ? "0".repeat(64) : sign(cfg.bridgeSecret, ts, callId);
-  return { "X-OpenClawTeamsBridge-Timestamp": String(ts), "X-OpenClawTeamsBridge-Signature": sig };
+  return { "X-StandIn-Timestamp": String(ts), "X-StandIn-Signature": sig };
 }
 
 function connectWorker(p: number, callId: string): Promise<WebSocket> {
@@ -126,16 +126,42 @@ function until<T>(fn: () => T | undefined, timeoutMs = 2000): Promise<T> {
   });
 }
 
+/** Await a handshake that is expected to be refused. Races "open" against
+ *  "error" so a regression that starts ACCEPTING fails the assertion fast,
+ *  instead of hanging forever on an "error" event that never arrives. */
+async function refusedHandshake(ws: WebSocket, whatWouldBeBroken: string): Promise<string> {
+  const outcome = await new Promise<{ ok: true } | { ok: false; message: string }>((r) => {
+    ws.once("error", (e: Error) => r({ ok: false, message: e.message }));
+    ws.once("open", () => r({ ok: true }));
+  });
+  if (outcome.ok) {
+    ws.close();
+    assert.fail(`handshake was accepted but must be refused: ${whatWouldBeBroken}`);
+  }
+  return outcome.message;
+}
+
 test("rejects bad signature / stale timestamp / malformed callId escape with 401", async () => {
-  for (const opts of [{ badSig: true }, { staleTs: true }]) {
-    const ws = new WebSocket(`ws://127.0.0.1:${port}/voice/msteams/stream/x`, { headers: workerHeaders("x", opts) });
-    const err = await new Promise<Error>((r) => ws.once("error", r));
-    assert.match(err.message, /401/);
+  // These must run under the REAL wsPath. Pointed at a non-matching path they
+  // 401 on the path guard alone, before authorizeUpgrade ever reaches verify(),
+  // and the assertions hold even with HMAC checking removed entirely.
+  for (const [opts, broken] of [
+    [{ badSig: true }, "signature verification"],
+    [{ staleTs: true }, "timestamp freshness"],
+  ] as const) {
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/msteams/calling/x`, { headers: workerHeaders("x", opts) });
+    assert.match(await refusedHandshake(ws, broken), /401/);
   }
   // pre-auth crash guard: %zz must 401, not kill the process
-  const ws = new WebSocket(`ws://127.0.0.1:${port}/voice/msteams/stream/%zz`, { headers: workerHeaders("%zz") });
-  const err = await new Promise<Error>((r) => ws.once("error", r));
-  assert.match(err.message, /401/);
+  const ws = new WebSocket(`ws://127.0.0.1:${port}/msteams/calling/%zz`, { headers: workerHeaders("%zz") });
+  assert.match(await refusedHandshake(ws, "the malformed-escape crash guard"), /401/);
+});
+
+test("X-StandIn-* is the accepted pair", async () => {
+  const CALL_ID = "call-current-pair";
+  const current = await connectWorker(port, CALL_ID);
+  assert.equal(current.readyState, WebSocket.OPEN);
+  current.close();
 });
 
 test("full relay: session.start dispatch metadata, audio both ways, ping/pong, context, teardown", async () => {

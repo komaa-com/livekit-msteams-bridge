@@ -168,8 +168,8 @@ export function normalizeWsPath(raw: string): string {
 export function loadConfig(): BridgeConfig {
   return {
     port: numFromEnv("PORT", 8080),
-    // Same default as the OpenClaw and Hermes plugins, so one StandIn identity URL shape works for
-    // every backend and the portal's bare-host completion is correct here too.
+    // StandIn dials {WS_PATH}/{callId}, and the portal completes a bare host to this path, so the
+    // default is what an identity registered with no explicit path will reach.
     wsPath: normalizeWsPath(process.env.WS_PATH ?? "/msteams/calling"),
     host: process.env.BIND?.trim() || "0.0.0.0",
     bridgeSecret: required("BRIDGE_SECRET"),

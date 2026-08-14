@@ -40,7 +40,7 @@ export {
   type ReapableCall,
   type ReapReason,
 } from "./callLifecycle.js";
-export { sign, verify, isFresh, TIMESTAMP_HEADER, SIGNATURE_HEADER, LEGACY_TIMESTAMP_HEADER, LEGACY_SIGNATURE_HEADER } from "./hmac.js";
+export { sign, verify, isFresh, TIMESTAMP_HEADER, SIGNATURE_HEADER } from "./hmac.js";
 export * from "./protocol.js";
 export { renderMetrics } from "./metrics.js";
 export { logger, type Logger } from "./log.js";

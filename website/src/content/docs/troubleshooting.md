@@ -10,7 +10,7 @@ Start by watching the bridge logs (`LOG_LEVEL=debug` for the most detail) and `G
 | Symptom in logs | Cause | Fix |
 | --- | --- | --- |
 | `rejected upgrade … bad signature` | `BRIDGE_SECRET` differs between StandIn and the bridge | Copy the pairing secret exactly into `BRIDGE_SECRET`; restart. |
-| `rejected upgrade … stale or missing timestamp` | Clock skew beyond `HMAC_FRESHNESS_MS`, or the headers aren't reaching the bridge | Fix host clock (NTP); make sure your proxy forwards the `X-StandIn-*` (or legacy `X-OpenClawTeamsBridge-*`) headers. |
+| `rejected upgrade … stale or missing timestamp` | Clock skew beyond `HMAC_FRESHNESS_MS`, or the headers aren't reaching the bridge | Fix host clock (NTP); make sure your proxy forwards the `X-StandIn-*` headers. |
 | `rejected upgrade … replayed handshake` | The same handshake tuple was seen twice | Usually a benign retry; if persistent, check for a proxy duplicating the upgrade. |
 | `rejected upgrade … bridge shared secret is not configured` | `BRIDGE_SECRET` is unset | Set it. The bridge fails closed rather than accepting unauthenticated calls. |
 | `409 … already has a live session` | A second upgrade arrived for a `callId` already live | Expected on a reconnect/rollout; the original call keeps the slot. |
@@ -60,7 +60,7 @@ That is the group-call gate. In a call with 2+ humans the agent must be addresse
 
 - `AMBIENT_VISION` defaults to `false`. It is off until you set it.
 - `REQUIRE_RECORDING_STATUS` defaults to `true`: nothing is captured until Teams reports recording as active, and frames from before that are never surfaced retroactively.
-- `MAX_VISION_PER_MINUTE=0` **disables** the feature here (it does not mean "unlimited", unlike the OpenClaw plugin's key of the same name).
+- `MAX_VISION_PER_MINUTE=0` **disables** the feature. It does not mean "unlimited" - if you want a high cap, set a high number.
 - A frozen screen sends nothing by design - only changed frames are delivered. `bridge_vision_frames_sent_total` is the counter to watch.
 - `AMBIENT_VISION is on but this room has no sendVision route` in the logs means a custom `RoomConnector` is in use whose room object does not implement `sendVision`.
 
