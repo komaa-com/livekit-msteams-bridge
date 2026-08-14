@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { Duplex } from "node:stream";
 import { WebSocketServer } from "ws";
 import type { BridgeConfig } from "./config.js";
-import { isFresh, verify, LEGACY_SIGNATURE_HEADER, LEGACY_TIMESTAMP_HEADER, SIGNATURE_HEADER, TIMESTAMP_HEADER } from "./hmac.js";
+import { isFresh, verify, SIGNATURE_HEADER, TIMESTAMP_HEADER } from "./hmac.js";
 import { logger } from "./log.js";
 import { CallReaper } from "./callLifecycle.js";
 import { CallSession, type RoomConnector } from "./session.js";
@@ -13,7 +13,7 @@ const log = logger("server");
 /**
  * Worker-facing WebSocket server. The StandIn media bridge dials
  * {wsBaseUrl}/{callId} with an HMAC-signed upgrade
- * (X-OpenClawTeamsBridge-Timestamp / -Signature over "{timestampMs}.{callId}").
+ * (X-StandIn-Timestamp / -Signature over "{timestampMs}.{callId}").
  * Hardening is a straight port of the proven @komaa/elevenlabs-msteams-bridge
  * transport: replay-proof single-use handshakes, caps checked before crypto,
  * pre-start + dead-peer timers, duplicate-callId 409, SIGTERM drain.
@@ -105,8 +105,9 @@ export function authorizeUpgrade(
   if (!cfg.bridgeSecret) {
     return { error: "bridge shared secret is not configured" }; // fail closed
   }
-  const tsHeader = req.headers[TIMESTAMP_HEADER] ?? req.headers[LEGACY_TIMESTAMP_HEADER];
-  const sigHeader = req.headers[SIGNATURE_HEADER] ?? req.headers[LEGACY_SIGNATURE_HEADER];
+  // X-StandIn-* is the only accepted pair.
+  const tsHeader = req.headers[TIMESTAMP_HEADER];
+  const sigHeader = req.headers[SIGNATURE_HEADER];
   const ts = Number(Array.isArray(tsHeader) ? tsHeader[0] : tsHeader);
   const sig = (Array.isArray(sigHeader) ? sigHeader[0] : sigHeader) ?? "";
   if (!isFresh(ts, cfg.hmacFreshnessMs)) {

@@ -41,7 +41,7 @@ Relays the caller's screen-share and camera to the agent as discrete labelled im
 | Variable | Default | Description |
 | --- | --- | --- |
 | `AMBIENT_VISION` | `false` | Master switch. Off means inbound `video.frame` messages are ignored entirely. |
-| `MAX_VISION_PER_MINUTE` | `30` | Per-call spend cap over a sliding 60-second window. **`0` disables.** The sibling OpenClaw plugin's `maxVisionPerMinute` treats `0` as *unlimited*; that inversion is deliberately not carried over - here the master switch is how you turn the feature on, so `0` reads the way everyone expects. Set a large number for "effectively unlimited". |
+| `MAX_VISION_PER_MINUTE` | `30` | Per-call spend cap over a sliding 60-second window. **`0` disables.** Set it deliberately: this is the knob that spends money per frame. |
 | `REQUIRE_RECORDING_STATUS` | `true` | Hold frames back until Teams reports the call recording as active (Media Access obligation). While it blocks, frames are not even stored, so nothing captured beforehand can surface later. |
 
 Under a tight budget the screen-share wins the last slot ahead of the camera: a shared screen carries far more than a talking head. Each image's stream attributes carry `source`, `owner` (`"Sara's shared screen"`, degrading to `"a shared screen"` when Teams does not name the participant), `caption`, `width`, `height` and `ts`.

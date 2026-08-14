@@ -21,7 +21,7 @@ export default defineConfig({
         // Cloudflare Web Analytics beacon (privacy-friendly pageviews; complements GA above).
         { tag: "script", attrs: { type: "module", src: "https://static.cloudflareinsights.com/beacon.min.js", "data-cf-beacon": '{"token": "49de4fe6d4e64fb6a5b18bbc7d133e88"}' } },
       ],
-      title: "Microsoft Teams Bridge for LiveKit Agents",
+      title: "Microsoft Teams Bridge for LiveKit Agents (Node.js)",
       description:
         "Put a LiveKit Agent - including avatar agents - on a real Microsoft Teams call: one room per call with explicit agent dispatch, 16 kHz PCM audio relay, and call governors, connected through the StandIn media bridge.",
       social: [
