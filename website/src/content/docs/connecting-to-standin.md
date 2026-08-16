@@ -16,10 +16,12 @@ Keep the secret out of your shell history and images - pass it through your secr
 In the identity's settings, set the **agent WebSocket URL** to your bridge, using the `wss://.../msteams/calling` path:
 
 ```text
-wss://lk-bridge.example.com:8080/msteams/calling
+wss://lk-bridge.example.com/msteams/calling
 ```
 
 StandIn appends `/{callId}` per call, so the bridge receives `/msteams/calling/{callId}`. The bridge takes the last path segment as the `callId` and binds the whole call to it (the HMAC is computed over that `callId`, so it cannot be tampered with).
+
+The URL is portless because your TLS front (tunnel, ingress, or load balancer) answers on 443 and forwards to the bridge on its local port, `9442` by default (`PORT`). Only put a port in the URL if the TLS front itself listens somewhere other than 443.
 
 ## TLS
 

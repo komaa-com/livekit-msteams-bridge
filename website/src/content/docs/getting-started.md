@@ -53,7 +53,7 @@ import { loadConfig, startServer } from "@komaa/livekit-msteams-bridge";
 startServer(loadConfig()); // same env variables as the CLI
 ```
 
-Every option is an environment variable; the package ships a commented [`.env.example`](https://github.com/komaa-com/livekit-msteams-bridge/blob/main/.env.example), and the [Configuration Reference](/livekit-msteams-bridge/configuration-reference/) documents each one. The bridge listens on `0.0.0.0:8080` by default and exposes `GET /healthz` for liveness.
+Every option is an environment variable; the package ships a commented [`.env.example`](https://github.com/komaa-com/livekit-msteams-bridge/blob/main/.env.example), and the [Configuration Reference](/livekit-msteams-bridge/configuration-reference/) documents each one. The bridge listens on `0.0.0.0:9442` by default and exposes `GET /healthz` for liveness.
 
 `BRIDGE_SECRET` comes from StandIn in the next step.
 
@@ -62,27 +62,27 @@ Every option is an environment variable; the package ships a commented [`.env.ex
 StandIn is the hosted service that joins the Teams call and dials into your bridge. Pick a tier at [standin.komaa.com](https://standin.komaa.com) (sandbox for an instant trial), pair, and you get a **shared secret**.
 
 1. Put the secret in `BRIDGE_SECRET` (both sides must match exactly).
-2. Point the identity's **agent WebSocket URL** at your bridge, for example `wss://lk-bridge.example.com:8080/msteams/calling`. StandIn appends `/{callId}` per call.
+2. Point the identity's **agent WebSocket URL** at your bridge, for example `wss://lk-bridge.example.com/msteams/calling`. StandIn appends `/{callId}` per call.
 3. Restart the bridge if you changed the env.
 
-StandIn dials in **from the internet**, so a laptop or private host needs a public URL. A tunnel gives you one and terminates TLS (so you get `wss://` for free). Run one pointing at port `8080`, then use the `wss://.../msteams/calling` form of the printed host:
+StandIn dials in **from the internet**, so a laptop or private host needs a public URL. A tunnel gives you one and terminates TLS (so you get `wss://` for free). Run one pointing at port `9442`, then register `wss://<printed host>/msteams/calling` (portless: the tunnel answers on 443 and forwards to `9442`):
 
-Tailscale Funnel:
+Tailscale Funnel (mounts the bridge's path on the node's public 443; Funnel cannot listen on `9442` directly):
 
 ```bash
-tailscale funnel --bg --https=8080 8080
+tailscale funnel --bg --set-path /msteams/calling http://127.0.0.1:9442/msteams/calling
 ```
 
 Cloudflare Tunnel:
 
 ```bash
-cloudflared tunnel --url http://localhost:8080
+cloudflared tunnel --url http://localhost:9442
 ```
 
 ngrok:
 
 ```bash
-ngrok http 8080
+ngrok http 9442
 ```
 
 For a fixed production host use an ingress or load balancer that terminates TLS in front of the bridge. See [Connecting to StandIn](/livekit-msteams-bridge/connecting-to-standin/) for the full detail. Never give StandIn a plain `ws://` URL outside local testing.

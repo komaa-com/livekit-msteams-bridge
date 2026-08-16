@@ -167,7 +167,7 @@ export function normalizeWsPath(raw: string): string {
 
 export function loadConfig(): BridgeConfig {
   return {
-    port: numFromEnv("PORT", 8080),
+    port: numFromEnv("PORT", 9442),
     // StandIn dials {WS_PATH}/{callId}, and the portal completes a bare host to this path, so the
     // default is what an identity registered with no explicit path will reach.
     wsPath: normalizeWsPath(process.env.WS_PATH ?? "/msteams/calling"),
