@@ -64,7 +64,7 @@ The wake phrase is detected from what your agent publishes on LiveKit's own `lk.
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `PORT` | `8080` | TCP port for worker WebSocket upgrades (and `/healthz`, `/metrics`). |
+| `PORT` | `9442` | TCP port for worker WebSocket upgrades (and `/healthz`, `/metrics`). |
 | `BIND` | `0.0.0.0` | Bind address. |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, or `error`. |
 | `STALE_CALL_REAPER_SECONDS` | `120` | End a call whose agent never joined the room (`session.end` reason `no-answer`). `0` disables. Covers the most common setup mistake - `LIVEKIT_AGENT_NAME` not matching the worker's `agent_name` - where the caller would otherwise sit on a silent call that nothing ever ends. Costs nothing to leave on: it makes no provider call, it only frees local resources. |

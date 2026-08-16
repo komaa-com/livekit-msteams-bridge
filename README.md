@@ -120,15 +120,15 @@ Run it:
 npx @komaa/livekit-msteams-bridge
 ```
 
-The bridge listens on **`:8080`** at **`/msteams/calling`** (override with `PORT` and `WS_PATH`).
+The bridge listens on **`:9442`** at **`/msteams/calling`** (override with `PORT` and `WS_PATH`).
 It binds `0.0.0.0` by default; put your tunnel or reverse proxy in front of it and register the
 public `wss://` URL - never the local `ws://` bind.
 
 **Check it before you call.** Two things have to be true, and both are visible without placing a call:
 
 ```bash
-curl -sS http://127.0.0.1:8080/healthz          # the bridge is up
-curl -sS http://127.0.0.1:8080/metrics | head   # counters exist
+curl -sS http://127.0.0.1:9442/healthz          # the bridge is up
+curl -sS http://127.0.0.1:9442/metrics | head   # counters exist
 ```
 
 Then confirm your worker is registered under the same name you set above - if
@@ -146,7 +146,7 @@ startServer(loadConfig()); // env-configured; see .env.example
 
 Pick a tier at [standin.komaa.com](https://standin.komaa.com), pair an identity, then:
 
-1. Point the identity's **agent WebSocket URL** at this bridge (e.g. `wss://lk-bridge.example.com:8080/msteams/calling`; StandIn appends `/{callId}` per call).
+1. Point the identity's **agent WebSocket URL** at this bridge (e.g. `wss://lk-bridge.example.com/msteams/calling`, with your TLS front on 443 forwarding to the bridge on `9442`; StandIn appends `/{callId}` per call).
 2. Set `BRIDGE_SECRET` to the pairing secret (both sides must match or the handshake is rejected with 401).
 3. Call your Teams bot. StandIn joins, dials the bridge, the bridge creates the room and dispatches your agent, and the agent answers.
 
